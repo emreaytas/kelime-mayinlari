@@ -1,4 +1,4 @@
-// src/components/GameInterface.jsx
+// src/components/GameInterface.jsx - Düzeltilmiş Versiyon
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -12,16 +12,15 @@ import {
   ScrollView,
 } from "react-native";
 import { database, auth } from "../firebase/config";
-import { ref, onValue, update } from "firebase/database";
+import { ref, onValue, update, get } from "firebase/database";
+import { router } from "expo-router";
 import Board from "./Board";
 import LetterRack from "./LetterRack";
 import {
   validateWord,
-  calculateWordPoints,
-  drawNewLetters,
   letterValues,
-  checkSpecialItems,
-  applyMineEffect,
+  generateLetterPool,
+  distributeLetters,
 } from "../utils/GameUtils";
 
 export default function GameInterface({ gameId }) {
@@ -35,7 +34,6 @@ export default function GameInterface({ gameId }) {
   const [earnedPoints, setEarnedPoints] = useState(0);
   const [activeReward, setActiveReward] = useState(null);
   const [specialPopup, setSpecialPopup] = useState(null);
-  const [debugMode, setDebugMode] = useState(false);
 
   // Firebase'den oyun verilerini çekme
   useEffect(() => {
@@ -407,6 +405,32 @@ export default function GameInterface({ gameId }) {
     }
   };
 
+  // Yeni harfler çek
+  const drawNewLetters = (playerRack, letterPool, usedIndices) => {
+    // Kullanılan harfleri raftan çıkar
+    const updatedRack = [...playerRack];
+
+    // İndeksleri büyükten küçüğe sırala (doğru çıkarma için)
+    const sortedIndices = [...usedIndices].sort((a, b) => b - a);
+
+    // Kullanılan harfleri çıkar
+    sortedIndices.forEach((index) => {
+      if (index >= 0 && index < updatedRack.length) {
+        updatedRack.splice(index, 1);
+      }
+    });
+
+    // Yeni harfler çek
+    const neededLetters = Math.min(7 - updatedRack.length, letterPool.length);
+    const newLetters = letterPool.slice(0, neededLetters);
+    const updatedPool = letterPool.slice(neededLetters);
+
+    // Yeni harfleri rafa ekle
+    updatedRack.push(...newLetters);
+
+    return { updatedRack, updatedPool };
+  };
+
   // Hamleyi onayla
   const confirmMove = async () => {
     if (!isUserTurn()) {
@@ -432,12 +456,12 @@ export default function GameInterface({ gameId }) {
       // Harfleri tahtaya yerleştir
       selectedBoardCells.forEach((cell) => {
         const { row, col, rackIndex } = cell;
-        if (rackIndex < 0 || rackIndex >= currentRack.length) return;
-
-        const letterObj = currentRack[rackIndex];
-        const letter =
-          typeof letterObj === "object" ? letterObj.letter : letterObj;
-        boardCopy[row][col].letter = letter;
+        if (rackIndex >= 0 && rackIndex < currentRack.length) {
+          const letterObj = currentRack[rackIndex];
+          const letter =
+            typeof letterObj === "object" ? letterObj.letter : letterObj;
+          boardCopy[row][col].letter = letter;
+        }
       });
 
       // Puanları hesapla
@@ -445,13 +469,18 @@ export default function GameInterface({ gameId }) {
 
       // Mayınları kontrol et
       const mine = checkForMines(selectedBoardCells);
+      let mineEffect = null;
 
       if (mine) {
         // Mayın etkisini uygula
         const adjustedPoints = applyMineEffect(mine, finalPoints);
+        mineEffect = mine.type;
 
         // Puanları güncelle
         finalPoints = adjustedPoints;
+
+        // Mayını temizle
+        boardCopy[mine.row][mine.col].special = null;
 
         // Kullanıcıyı bilgilendir
         setSpecialPopup({
@@ -460,27 +489,15 @@ export default function GameInterface({ gameId }) {
           type: "mine",
         });
 
-        // Özel mayın işlemleri
+        // HarfKaybi mayını için özel işlem
         if (mine.type === "HarfKaybi") {
-          // Harfleri havuza geri ver
-          const usedRackIndices = selectedBoardCells.map(
-            (cell) => cell.rackIndex
-          );
-          const uniqueIndices = [...new Set(usedRackIndices)].sort(
-            (a, b) => b - a
-          );
-
-          uniqueIndices.forEach((index) => {
-            if (index >= 0 && index < currentRack.length) {
-              currentRack.splice(index, 1);
-            }
-          });
-
-          // Kalan tüm harfleri havuza ekle
+          // Tüm harfleri havuza geri ver
           updatedPool = [...updatedPool, ...currentRack];
 
-          // Havuzu karıştır ve yeni harfler çek
+          // Havuzu karıştır
           updatedPool.sort(() => Math.random() - 0.5);
+
+          // Yeni 7 harfle yenile
           currentRack = updatedPool.slice(0, 7);
           updatedPool = updatedPool.slice(7);
         }
@@ -488,15 +505,13 @@ export default function GameInterface({ gameId }) {
 
       // Ödülleri kontrol et
       const reward = checkForRewards(selectedBoardCells);
+      let rewardType = null;
 
       if (reward) {
-        // Ödülü kullanıcıya ekle
-        const userRewards =
-          game.player1.id === auth.currentUser?.uid
-            ? game.player1Rewards || []
-            : game.player2Rewards || [];
+        rewardType = reward.type;
 
-        userRewards.push(reward.type);
+        // Ödülü temizle
+        boardCopy[reward.row][reward.col].special = null;
 
         // Kullanıcıyı bilgilendir
         setSpecialPopup({
@@ -506,19 +521,21 @@ export default function GameInterface({ gameId }) {
         });
       }
 
-      // Kullanılan harfleri raftan çıkar ve yenilerini çek
-      const usedRackIndices = selectedBoardCells.map((cell) => cell.rackIndex);
-      const uniqueIndices = [...new Set(usedRackIndices)].sort((a, b) => b - a);
-
-      // HarfKaybi mayını değilse, normal şekilde yeni harfler çek
+      // HarfKaybi mayını yoksa normal şekilde harfleri güncelle
       if (!mine || mine.type !== "HarfKaybi") {
-        const { updatedRack, updatedPool: newPool } = drawNewLetters(
+        // Kullanılan harflerin indekslerini topla
+        const usedRackIndices = selectedBoardCells.map(
+          (cell) => cell.rackIndex
+        );
+
+        // Harfleri güncelle
+        const result = drawNewLetters(
           currentRack,
           updatedPool,
-          uniqueIndices
+          usedRackIndices
         );
-        currentRack = updatedRack;
-        updatedPool = newPool;
+        currentRack = result.updatedRack;
+        updatedPool = result.updatedPool;
       }
 
       // Sonraki oyuncu
@@ -531,19 +548,21 @@ export default function GameInterface({ gameId }) {
       let player1Score = game.player1.score;
       let player2Score = game.player2.score;
 
-      if (game.player1.id === auth.currentUser?.uid) {
-        player1Score += finalPoints > 0 ? finalPoints : 0;
+      const isPlayer1 = game.player1.id === auth.currentUser?.uid;
 
-        // PuanTransferi işle
+      if (isPlayer1) {
+        // PuanTransferi özel işlemi
         if (mine && mine.type === "PuanTransferi") {
-          player2Score += earnedPoints;
+          player2Score += Math.abs(earnedPoints);
+        } else {
+          player1Score += Math.max(0, finalPoints);
         }
       } else {
-        player2Score += finalPoints > 0 ? finalPoints : 0;
-
-        // PuanTransferi işle
+        // PuanTransferi özel işlemi
         if (mine && mine.type === "PuanTransferi") {
-          player1Score += earnedPoints;
+          player1Score += Math.abs(earnedPoints);
+        } else {
+          player2Score += Math.max(0, finalPoints);
         }
       }
 
@@ -558,7 +577,7 @@ export default function GameInterface({ gameId }) {
       };
 
       // Rafı güncelle
-      if (game.player1.id === auth.currentUser?.uid) {
+      if (isPlayer1) {
         updates.player1Rack = currentRack;
       } else {
         updates.player2Rack = currentRack;
@@ -566,14 +585,14 @@ export default function GameInterface({ gameId }) {
 
       // Ödülleri güncelle
       if (reward) {
-        if (game.player1.id === auth.currentUser?.uid) {
+        if (isPlayer1) {
           updates.player1Rewards = game.player1Rewards
-            ? [...game.player1Rewards, reward.type]
-            : [reward.type];
+            ? [...game.player1Rewards, rewardType]
+            : [rewardType];
         } else {
           updates.player2Rewards = game.player2Rewards
-            ? [...game.player2Rewards, reward.type]
-            : [reward.type];
+            ? [...game.player2Rewards, rewardType]
+            : [rewardType];
         }
       }
 
@@ -590,7 +609,7 @@ export default function GameInterface({ gameId }) {
 
       setLoading(false);
     } catch (error) {
-      console.error("Confirm move error:", error);
+      console.error("Hamle onaylama hatası:", error);
       setLoading(false);
       Alert.alert(
         "Hata",
@@ -640,7 +659,7 @@ export default function GameInterface({ gameId }) {
 
       setLoading(false);
     } catch (error) {
-      console.error("Pass turn error:", error);
+      console.error("Pas geçme hatası:", error);
       setLoading(false);
       Alert.alert("Hata", "Pas geçilirken bir sorun oluştu: " + error.message);
     }
@@ -693,10 +712,9 @@ export default function GameInterface({ gameId }) {
         // Kalan harflerden puanları topla
         const player1RemainingPoints = player1Rack.reduce(
           (total, letterObj) => {
-            const points =
-              typeof letterObj === "object"
-                ? letterObj.points
-                : letterValues[letterObj] || 0;
+            const letter =
+              typeof letterObj === "object" ? letterObj.letter : letterObj;
+            const points = letter === "JOKER" ? 0 : letterValues[letter] || 0;
             return total + points;
           },
           0
@@ -704,20 +722,19 @@ export default function GameInterface({ gameId }) {
 
         const player2RemainingPoints = player2Rack.reduce(
           (total, letterObj) => {
-            const points =
-              typeof letterObj === "object"
-                ? letterObj.points
-                : letterValues[letterObj] || 0;
+            const letter =
+              typeof letterObj === "object" ? letterObj.letter : letterObj;
+            const points = letter === "JOKER" ? 0 : letterValues[letter] || 0;
             return total + points;
           },
           0
         );
 
         // Harfleri önce bitiren oyuncuya, rakibinin kalan harflerinin puanını ekle
-        if (isPlayer1) {
+        if (player1Rack.length === 0 && player2Rack.length > 0) {
           player1FinalScore += player2RemainingPoints;
           player2FinalScore -= player2RemainingPoints;
-        } else {
+        } else if (player2Rack.length === 0 && player1Rack.length > 0) {
           player2FinalScore += player1RemainingPoints;
           player1FinalScore -= player1RemainingPoints;
         }
@@ -729,8 +746,14 @@ export default function GameInterface({ gameId }) {
         status: "completed",
         completedAt: Date.now(),
         reason,
-        "player1.score": player1FinalScore,
-        "player2.score": player2FinalScore,
+        player1: {
+          ...game.player1,
+          score: player1FinalScore,
+        },
+        player2: {
+          ...game.player2,
+          score: player2FinalScore,
+        },
       };
 
       // Tamamlanan oyunlar listesine ekle
@@ -738,48 +761,6 @@ export default function GameInterface({ gameId }) {
 
       // Aktif oyunlardan kaldır
       await update(ref(database, `games/${gameId}`), { status: "completed" });
-
-      // Oyuncu istatistiklerini güncelle
-      const player1Win = player1FinalScore > player2FinalScore;
-      const player2Win = player2FinalScore > player1FinalScore;
-
-      // Oyuncu 1 istatistikleri
-      const player1Ref = ref(database, `users/${game.player1.id}`);
-      const player1Snapshot = await get(player1Ref);
-      const player1Data = player1Snapshot.val() || {};
-
-      const player1GamesPlayed = (player1Data.gamesPlayed || 0) + 1;
-      const player1GamesWon = player1Win
-        ? (player1Data.gamesWon || 0) + 1
-        : player1Data.gamesWon || 0;
-      const player1SuccessRate = Math.round(
-        (player1GamesWon / player1GamesPlayed) * 100
-      );
-
-      await update(player1Ref, {
-        gamesPlayed: player1GamesPlayed,
-        gamesWon: player1GamesWon,
-        successRate: player1SuccessRate,
-      });
-
-      // Oyuncu 2 istatistikleri
-      const player2Ref = ref(database, `users/${game.player2.id}`);
-      const player2Snapshot = await get(player2Ref);
-      const player2Data = player2Snapshot.val() || {};
-
-      const player2GamesPlayed = (player2Data.gamesPlayed || 0) + 1;
-      const player2GamesWon = player2Win
-        ? (player2Data.gamesWon || 0) + 1
-        : player2Data.gamesWon || 0;
-      const player2SuccessRate = Math.round(
-        (player2GamesWon / player2GamesPlayed) * 100
-      );
-
-      await update(player2Ref, {
-        gamesPlayed: player2GamesPlayed,
-        gamesWon: player2GamesWon,
-        successRate: player2SuccessRate,
-      });
 
       setLoading(false);
 
@@ -801,7 +782,7 @@ export default function GameInterface({ gameId }) {
         ]
       );
     } catch (error) {
-      console.error("End game error:", error);
+      console.error("Oyun bitirme hatası:", error);
       setLoading(false);
       Alert.alert(
         "Hata",
@@ -923,6 +904,13 @@ export default function GameInterface({ gameId }) {
       await update(ref(database, `games/${gameId}`), updates);
       setActiveReward(null);
       setLoading(false);
+
+      // Başarılı mesajı
+      if (!specialPopup) {
+        Alert.alert("Başarılı", "Ödül başarıyla kullanıldı!", [
+          { text: "Tamam" },
+        ]);
+      }
     } catch (error) {
       console.error("Use reward error:", error);
       setLoading(false);
@@ -931,11 +919,6 @@ export default function GameInterface({ gameId }) {
         "Ödül kullanılırken bir sorun oluştu: " + error.message
       );
     }
-  };
-
-  // Debug modu aktifleştir
-  const toggleDebugMode = () => {
-    setDebugMode(!debugMode);
   };
 
   // Özel öğe popup'ını kapat
@@ -956,8 +939,11 @@ export default function GameInterface({ gameId }) {
     return (
       <View style={styles.errorContainer}>
         <Text>Oyun bulunamadı</Text>
-        <TouchableOpacity style={styles.button} onPress={() => router.back()}>
-          <Text style={styles.buttonText}>Ana Menüye Dön</Text>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.replace("/home")}
+        >
+          <Text style={styles.buttonText}>Ana Sayfaya Dön</Text>
         </TouchableOpacity>
       </View>
     );
@@ -999,7 +985,7 @@ export default function GameInterface({ gameId }) {
           board={game.board}
           selectedCells={selectedBoardCells}
           onCellPress={handleBoardCellSelect}
-          showSpecials={debugMode}
+          showSpecials={false}
         />
       </ScrollView>
 
@@ -1110,15 +1096,6 @@ export default function GameInterface({ gameId }) {
             : `${opponent?.username || "Rakip"} oynuyor...`}
         </Text>
       </View>
-
-      {/* Debug Mode Toggle (Development only) */}
-      {__DEV__ && (
-        <TouchableOpacity style={styles.debugButton} onPress={toggleDebugMode}>
-          <Text style={styles.debugButtonText}>
-            {debugMode ? "Debug Kapat" : "Debug Aç"}
-          </Text>
-        </TouchableOpacity>
-      )}
 
       {/* Special Item Popup */}
       <Modal
@@ -1300,18 +1277,6 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontStyle: "italic",
-  },
-  debugButton: {
-    position: "absolute",
-    right: 10,
-    bottom: 10,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    padding: 8,
-    borderRadius: 20,
-  },
-  debugButtonText: {
-    color: "white",
-    fontSize: 12,
   },
   modalOverlay: {
     flex: 1,

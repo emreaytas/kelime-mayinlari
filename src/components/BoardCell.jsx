@@ -1,4 +1,4 @@
-// src/components/BoardCell.jsx
+// src/components/BoardCell.jsx - Düzeltilmiş Versiyon
 import React from "react";
 import {
   TouchableOpacity,
@@ -10,11 +10,14 @@ import {
 
 // Ekran genişliğini al
 const { width } = Dimensions.get("window");
+const BOARD_SIZE = Math.min(width - 20, 375); // Ekran genişliği veya maksimum 375px
+const CELL_SIZE = BOARD_SIZE / 15; // 15x15 tahta için
 
 export default function BoardCell({
   letter,
   points,
   type,
+  special,
   isSelected,
   onPress,
 }) {
@@ -36,9 +39,27 @@ export default function BoardCell({
     }
   };
 
+  // Özel öğe (mayın/ödül) ikonu
+  const getSpecialIcon = () => {
+    if (!special) return "";
+
+    // Mayınlar
+    if (special === "PuanBolunmesi") return "💣";
+    if (special === "PuanTransferi") return "💸";
+    if (special === "HarfKaybi") return "🧨";
+    if (special === "EkstraHamleEngeli") return "🚫";
+    if (special === "KelimeIptali") return "❌";
+
+    // Ödüller
+    if (special === "BolgeYasagi") return "🚧";
+    if (special === "HarfYasagi") return "🔒";
+    if (special === "EkstraHamleJokeri") return "🎁";
+
+    return "";
+  };
+
   const { backgroundColor, description } = getCellStyle();
-  // Her hücrenin boyutu ekran genişliğinin 1/15'i olacak
-  const cellSize = width / 15;
+  const specialIcon = getSpecialIcon();
 
   return (
     <TouchableOpacity
@@ -46,8 +67,8 @@ export default function BoardCell({
         styles.cell,
         {
           backgroundColor,
-          width: cellSize,
-          height: cellSize,
+          width: CELL_SIZE,
+          height: CELL_SIZE,
         },
         isSelected && styles.selectedCell,
         letter && styles.filledCell,
@@ -57,17 +78,21 @@ export default function BoardCell({
     >
       {letter ? (
         <View style={styles.letterContainer}>
-          <Text style={[styles.letter, { fontSize: cellSize * 0.5 }]}>
+          <Text style={[styles.letter, { fontSize: CELL_SIZE * 0.5 }]}>
             {letter === "JOKER" ? "*" : letter}
           </Text>
           {points !== null && (
-            <Text style={[styles.points, { fontSize: cellSize * 0.25 }]}>
+            <Text style={[styles.points, { fontSize: CELL_SIZE * 0.25 }]}>
               {points}
             </Text>
           )}
         </View>
+      ) : specialIcon ? (
+        <Text style={[styles.special, { fontSize: CELL_SIZE * 0.5 }]}>
+          {specialIcon}
+        </Text>
       ) : (
-        <Text style={[styles.description, { fontSize: cellSize * 0.35 }]}>
+        <Text style={[styles.description, { fontSize: CELL_SIZE * 0.35 }]}>
           {description}
         </Text>
       )}
@@ -107,5 +132,8 @@ const styles = StyleSheet.create({
   },
   description: {
     color: "#666",
+  },
+  special: {
+    color: "#333",
   },
 });
