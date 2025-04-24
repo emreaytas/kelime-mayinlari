@@ -123,19 +123,31 @@ export const updateUserStats = async (userId, isWin) => {
     }
 
     const userData = userDoc.data();
-    const gamesPlayed = userData.gamesPlayed + 1;
-    const gamesWon = isWin ? userData.gamesWon + 1 : userData.gamesWon;
-    const successRate =
-      gamesPlayed > 0 ? Math.round((gamesWon / gamesPlayed) * 100) : 0;
 
+    // Oyun sayılarını ve istatistikleri güncelle
+    const gamesPlayed = (userData.gamesPlayed || 0) + 1;
+    const gamesWon = isWin
+      ? (userData.gamesWon || 0) + 1
+      : userData.gamesWon || 0;
+
+    // Başarı yüzdesini kesin hesapla
+    // Tam sayı olarak yüzde hesaplaması
+    const successRate = Math.round((gamesWon / gamesPlayed) * 100);
+
+    // Güncellemeleri yap
     await updateDoc(userRef, {
       gamesPlayed,
       gamesWon,
       successRate,
     });
 
-    return { gamesPlayed, gamesWon, successRate };
+    return {
+      gamesPlayed,
+      gamesWon,
+      successRate,
+    };
   } catch (error) {
+    console.error("Kullanıcı istatistikleri güncellenemedi:", error);
     throw new Error("Kullanıcı istatistikleri güncellenemedi.");
   }
 };
