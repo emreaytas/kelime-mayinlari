@@ -1,4 +1,4 @@
-// src/components/BoardCell.jsx - Düzeltilmiş Versiyon
+// src/components/BoardCell.jsx
 import React from "react";
 import {
   TouchableOpacity,
@@ -8,10 +8,10 @@ import {
   Dimensions,
 } from "react-native";
 
-// Ekran genişliğini al
+// Get screen dimensions for responsive cells
 const { width } = Dimensions.get("window");
-const BOARD_SIZE = Math.min(width - 20, 375); // Ekran genişliği veya maksimum 375px
-const CELL_SIZE = BOARD_SIZE / 15; // 15x15 tahta için
+const BOARD_SIZE = Math.min(width - 20, 375);
+const CELL_SIZE = BOARD_SIZE / 15;
 
 export default function BoardCell({
   letter,
@@ -21,36 +21,36 @@ export default function BoardCell({
   isSelected,
   onPress,
 }) {
-  // Hücre rengi ve açıklaması (türüne göre)
+  // Cell color and description based on type
   const getCellStyle = () => {
     switch (type) {
       case "H2":
-        return { backgroundColor: "#87CEFA", description: "H²" }; // Açık mavi
+        return { backgroundColor: "#87CEFA", description: "H²" }; // Light blue
       case "H3":
-        return { backgroundColor: "#FF69B4", description: "H³" }; // Pembe
+        return { backgroundColor: "#FF69B4", description: "H³" }; // Pink
       case "K2":
-        return { backgroundColor: "#90EE90", description: "K²" }; // Açık yeşil
+        return { backgroundColor: "#90EE90", description: "K²" }; // Light green
       case "K3":
-        return { backgroundColor: "#FFA07A", description: "K³" }; // Açık turuncu
+        return { backgroundColor: "#FFA07A", description: "K³" }; // Light orange
       case "star":
-        return { backgroundColor: "#FFD700", description: "★" }; // Altın rengi
+        return { backgroundColor: "#FFD700", description: "★" }; // Gold
       default:
         return { backgroundColor: "#f5f5f5", description: "" };
     }
   };
 
-  // Özel öğe (mayın/ödül) ikonu
+  // Special item (mine/reward) icon
   const getSpecialIcon = () => {
     if (!special) return "";
 
-    // Mayınlar
+    // Mines
     if (special === "PuanBolunmesi") return "💣";
     if (special === "PuanTransferi") return "💸";
     if (special === "HarfKaybi") return "🧨";
     if (special === "EkstraHamleEngeli") return "🚫";
     if (special === "KelimeIptali") return "❌";
 
-    // Ödüller
+    // Rewards
     if (special === "BolgeYasagi") return "🚧";
     if (special === "HarfYasagi") return "🔒";
     if (special === "EkstraHamleJokeri") return "🎁";
@@ -65,36 +65,22 @@ export default function BoardCell({
     <TouchableOpacity
       style={[
         styles.cell,
-        {
-          backgroundColor,
-          width: CELL_SIZE,
-          height: CELL_SIZE,
-        },
+        { backgroundColor, width: CELL_SIZE, height: CELL_SIZE },
         isSelected && styles.selectedCell,
         letter && styles.filledCell,
       ]}
       onPress={onPress}
-      disabled={letter !== null && letter !== undefined}
+      disabled={letter !== null}
     >
       {letter ? (
         <View style={styles.letterContainer}>
-          <Text style={[styles.letter, { fontSize: CELL_SIZE * 0.5 }]}>
-            {letter === "JOKER" ? "*" : letter}
-          </Text>
-          {points !== null && (
-            <Text style={[styles.points, { fontSize: CELL_SIZE * 0.25 }]}>
-              {points}
-            </Text>
-          )}
+          <Text style={styles.letter}>{letter === "JOKER" ? "*" : letter}</Text>
+          {points !== null && <Text style={styles.points}>{points}</Text>}
         </View>
       ) : specialIcon ? (
-        <Text style={[styles.special, { fontSize: CELL_SIZE * 0.5 }]}>
-          {specialIcon}
-        </Text>
+        <Text style={styles.special}>{specialIcon}</Text>
       ) : (
-        <Text style={[styles.description, { fontSize: CELL_SIZE * 0.35 }]}>
-          {description}
-        </Text>
+        <Text style={styles.description}>{description}</Text>
       )}
     </TouchableOpacity>
   );
@@ -106,15 +92,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 0.5,
     borderColor: "#cccccc",
-    padding: 0,
-    margin: 0,
   },
   selectedCell: {
     borderWidth: 2,
     borderColor: "#3f51b5",
   },
   filledCell: {
-    backgroundColor: "#FFE4B5", // Dolu hücre rengi
+    backgroundColor: "#FFE4B5", // Filled cell color
   },
   letterContainer: {
     justifyContent: "center",
@@ -123,17 +107,20 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   letter: {
+    fontSize: CELL_SIZE * 0.5,
     fontWeight: "bold",
   },
   points: {
+    fontSize: CELL_SIZE * 0.25,
     position: "absolute",
     bottom: 1,
     right: 1,
   },
   description: {
+    fontSize: CELL_SIZE * 0.35,
     color: "#666",
   },
   special: {
-    color: "#333",
+    fontSize: CELL_SIZE * 0.5,
   },
 });
