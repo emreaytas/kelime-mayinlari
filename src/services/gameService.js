@@ -17,6 +17,144 @@ import {
   letterValues,
 } from "../utils/GameBoardUtils";
 
+// Hamle süresini kontrol et ve süresi dolanları işaretle
+export const checkGameTimers = async () => {
+  try {
+    // Aktif oyunları getir
+    const gamesRef = ref(database, "games");
+    const snapshot = await get(gamesRef);
+
+    if (!snapshot.exists()) {
+      return { processed: 0 };
+    }
+
+    const now = Date.now();
+    let processedCount = 0;
+
+    // Her oyun için kontrol et
+    snapshot.forEach(async (childSnapshot) => {
+      const gameId = childSnapshot.key;
+      const gameData = childSnapshot.val();
+
+      // Sadece aktif oyunları kontrol et
+      if (gameData.status !== "active") {
+        return;
+      }
+
+      // Son hamleden bu yana geçen süre
+      const timeSinceLastMove = now - gameData.lastMoveTime;
+
+      // Oyun tipi bazında süre sınırlarını belirle (milisaniye cinsinden)
+      let timeLimit;
+      switch (gameData.gameType) {
+        case "2min":
+          timeLimit = 2 * 60 * 1000; // 2 dakika
+          break;
+        case "5min":
+          timeLimit = 5 * 60 * 1000; // 5 dakika
+          break;
+        case "12hour":
+          timeLimit = 12 * 60 * 60 * 1000; // 12 saat
+          break;
+        case "24hour":
+          timeLimit = 24 * 60 * 60 * 1000; // 24 saat
+          break;
+        default:
+          // Varsayılan olarak 24 saat
+          timeLimit = 24 * 60 * 60 * 1000;
+      }
+
+      // Süre aşıldı mı?
+      if (timeSinceLastMove > timeLimit) {
+        // Oyunu tamamlandı olarak işaretle
+        const currentTurnPlayer = gameData.turnPlayer;
+        const player1Id = gameData.player1.id;
+        const player2Id = gameData.player2.id;
+
+        // Süresi geçen oyuncunun karşı tarafını kazanan olarak işaretle
+        const winnerId =
+          currentTurnPlayer === player1Id ? player2Id : player1Id;
+
+        // Oyuncuların mevcut puanlarını al
+        let player1Score = gameData.player1.score || 0;
+        let player2Score = gameData.player2.score || 0;
+
+        // Kazanan oyuncuya bonus puan ver
+        if (winnerId === player1Id) {
+          player1Score += 25; // Süre aşımı bonusu
+        } else {
+          player2Score += 25; // Süre aşımı bonusu
+        }
+
+        // Oyunu güncelle
+        const updates = {
+          status: "completed",
+          completedAt: now,
+          reason: "timeout",
+          timedOutPlayer: currentTurnPlayer,
+          winner: winnerId,
+          "player1.score": player1Score,
+          "player2.score": player2Score,
+        };
+
+        // Firebase'de güncelle
+        await update(ref(database, `games/${gameId}`), updates);
+
+        // Tamamlanan oyun olarak kopyala
+        await set(ref(database, `completedGames/${gameId}`), {
+          ...gameData,
+          ...updates,
+        });
+
+        // Oyuncu istatistiklerini güncelle
+        await updateUserStats(player1Id, winnerId === player1Id);
+        await updateUserStats(player2Id, winnerId === player2Id);
+
+        processedCount++;
+      }
+    });
+
+    return { processed: processedCount };
+  } catch (error) {
+    console.error("Timer check error:", error);
+    return { error: error.message };
+  }
+};
+
+export const updateUserStats = async (userId, isWin) => {
+  try {
+    // Kullanıcı verisini al
+    const userRef = ref(database, `users/${userId}`);
+    const snapshot = await get(userRef);
+
+    if (!snapshot.exists()) {
+      console.warn(`User with ID ${userId} not found for stats update`);
+      return false;
+    }
+
+    const userData = snapshot.val();
+
+    // İstatistikleri güncelle
+    const gamesPlayed = (userData.gamesPlayed || 0) + 1;
+    const gamesWon = isWin
+      ? (userData.gamesWon || 0) + 1
+      : userData.gamesWon || 0;
+    const successRate = Math.round((gamesWon / gamesPlayed) * 100);
+
+    // Firebase'de güncelle
+    await update(userRef, {
+      gamesPlayed,
+      gamesWon,
+      successRate,
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Stats update error:", error);
+    return false;
+  }
+};
+
 // Yeni oyun oluştur
 export const createNewGame = async (
   player1Id,
@@ -32,9 +170,21 @@ export const createNewGame = async (
     // Harf havuzu oluştur
     const letterPool = generateLetterPool();
 
+    // Rastgele bir başlangıç kelimesi seç
+    const startingWord = getRandomStartingWord();
+
+    // Kelimeyi tahtaya yerleştir (merkez yıldızdan başlayarak)
+    const boardWithStartingWord = placeInitialWord(gameBoard, startingWord);
+
+    // Başlangıç kelimesinin harflerini havuzdan çıkar
+    const updatedLetterPool = removeInitialWordFromPool(
+      letterPool,
+      startingWord
+    );
+
     // Harfleri dağıt
     const { player1Rack, player2Rack, remainingPool } =
-      distributeLetters(letterPool);
+      distributeLetters(updatedLetterPool);
 
     // Rastgele ilk oyuncu seç
     const firstPlayer = Math.random() < 0.5 ? player1Id : player2Id;
@@ -54,7 +204,7 @@ export const createNewGame = async (
         username: player2Username,
         score: 0,
       },
-      board: gameBoard,
+      board: boardWithStartingWord, // Başlangıç kelimesi yerleştirilmiş tahta
       letterPool: remainingPool,
       player1Rack,
       player2Rack,
@@ -65,9 +215,10 @@ export const createNewGame = async (
       lastMoveTime: Date.now(),
       gameType,
       status: "active",
-      firstMove: true, // İlk hamle henüz yapılmadı
-      centerRequired: true, // İlk hamlede merkez yıldız gerekli
+      firstMove: false, // İlk hamle yapıldı olarak işaretle
+      centerRequired: false, // Merkez yıldız artık gerekli değil
       consecutivePasses: 0, // Arka arkaya pas geçme sayısı
+      initialWord: startingWord, // Başlangıç kelimesini bilgi amaçlı sakla
     };
 
     // Firebase'e oyun verisini kaydet
@@ -241,19 +392,13 @@ export const placeWord = async (gameId, placedCells) => {
     let word = "";
     const cellTypes = [];
 
+    // Harfleri tahtaya yerleştir
     placedCells.forEach((cell) => {
       const { row, col, rackIndex } = cell;
-
-      if (rackIndex < 0 || rackIndex >= userRack.length) {
-        throw new Error("Geçersiz harf indeksi");
-      }
-
+      // Harfi kullanıcının rafından al
       const letterObj = userRack[rackIndex];
       const letter =
         typeof letterObj === "object" ? letterObj.letter : letterObj;
-
-      word += letter === "JOKER" ? "*" : letter;
-      cellTypes.push(boardCopy[row][col].type);
 
       // Tahtaya harfi yerleştir
       boardCopy[row][col].letter = letter;
@@ -683,7 +828,7 @@ export const surrender = async (gameId) => {
   }
 };
 
-// Oyunu bitir
+// endGame fonksiyonunda kazanma istatistiklerini güncellemek için ekleme yapın
 export const endGame = async (gameId, reason) => {
   try {
     const game = await getGameData(gameId);
@@ -712,33 +857,7 @@ export const endGame = async (gameId, reason) => {
     // Normal bitiş (tüm harfler bitti)
     else if (reason === "finished") {
       // Kalan harflerin puanını hesapla
-      const player1Rack = game.player1Rack || [];
-      const player2Rack = game.player2Rack || [];
-
-      const player1RemainingPoints = player1Rack.reduce((total, letterObj) => {
-        const letter =
-          typeof letterObj === "object" ? letterObj.letter : letterObj;
-        const points = letter === "JOKER" ? 0 : letterValues[letter] || 0;
-        return total + points;
-      }, 0);
-
-      const player2RemainingPoints = player2Rack.reduce((total, letterObj) => {
-        const letter =
-          typeof letterObj === "object" ? letterObj.letter : letterObj;
-        const points = letter === "JOKER" ? 0 : letterValues[letter] || 0;
-        return total + points;
-      }, 0);
-
-      // Bitiren oyuncuya rakibinin kalan harflerinin puanlarını ekle
-      if (player1Rack.length === 0 && player2Rack.length > 0) {
-        // Oyuncu 1 bitirdi
-        player1Score += player2RemainingPoints;
-        player2Score -= player2RemainingPoints;
-      } else if (player2Rack.length === 0 && player1Rack.length > 0) {
-        // Oyuncu 2 bitirdi
-        player2Score += player1RemainingPoints;
-        player1Score -= player1RemainingPoints;
-      }
+      // ...mevcut kodu koru...
     }
 
     // Oyunu tamamlandı olarak işaretle
@@ -757,6 +876,23 @@ export const endGame = async (gameId, reason) => {
       },
     };
 
+    // Kazanan belirle
+    const player1Win = player1Score > player2Score;
+    const player2Win = player2Score > player1Score;
+    const isDraw = player1Score === player2Score;
+
+    // Kazanan oyuncuyu belirle
+    let winnerId = null;
+    if (player1Win) {
+      winnerId = game.player1.id;
+    } else if (player2Win) {
+      winnerId = game.player2.id;
+    }
+
+    // Kazanan bilgisini oyuna ekle
+    gameData.winner = winnerId;
+    gameData.isDraw = isDraw;
+
     // Completed games koleksiyonuna ekle
     await set(ref(database, `completedGames/${gameId}`), gameData);
 
@@ -764,57 +900,14 @@ export const endGame = async (gameId, reason) => {
     await update(ref(database, `games/${gameId}`), { status: "completed" });
 
     // Oyuncu istatistiklerini güncelle
-    const player1Win = player1Score > player2Score;
-    const player2Win = player2Score > player1Score;
-
-    // Oyuncu 1 istatistikleri
-    const player1StatsRef = ref(database, `users/${game.player1.id}`);
-    const player1StatsSnapshot = await get(player1StatsRef);
-    const player1Stats = player1StatsSnapshot.val() || {};
-
-    const player1GamesPlayed = (player1Stats.gamesPlayed || 0) + 1;
-    const player1GamesWon = player1Win
-      ? (player1Stats.gamesWon || 0) + 1
-      : player1Stats.gamesWon || 0;
-    const player1SuccessRate = Math.round(
-      (player1GamesWon / player1GamesPlayed) * 100
-    );
-
-    await update(player1StatsRef, {
-      gamesPlayed: player1GamesPlayed,
-      gamesWon: player1GamesWon,
-      successRate: player1SuccessRate,
-    });
-
-    // Oyuncu 2 istatistikleri
-    const player2StatsRef = ref(database, `users/${game.player2.id}`);
-    const player2StatsSnapshot = await get(player2StatsRef);
-    const player2Stats = player2StatsSnapshot.val() || {};
-
-    const player2GamesPlayed = (player2Stats.gamesPlayed || 0) + 1;
-    const player2GamesWon = player2Win
-      ? (player2Stats.gamesWon || 0) + 1
-      : player2Stats.gamesWon || 0;
-    const player2SuccessRate = Math.round(
-      (player2GamesWon / player2GamesPlayed) * 100
-    );
-
-    await update(player2StatsRef, {
-      gamesPlayed: player2GamesPlayed,
-      gamesWon: player2GamesWon,
-      successRate: player2SuccessRate,
-    });
+    await updateUserStats(game.player1.id, player1Win);
+    await updateUserStats(game.player2.id, player2Win);
 
     return {
       success: true,
       player1Score,
       player2Score,
-      winner:
-        player1Score > player2Score
-          ? game.player1.id
-          : player2Score > player1Score
-          ? game.player2.id
-          : null,
+      winner: winnerId,
     };
   } catch (error) {
     console.error("Oyun bitirme hatası:", error);

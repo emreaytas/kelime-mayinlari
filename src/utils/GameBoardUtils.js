@@ -1,122 +1,21 @@
 // src/utils/GameBoardUtils.js
 import wordList from "../assets/wordList";
 
-// Sabit tahta özellikleri
-export const BOARD_CONFIG = {
-  // Sabit hücre konumları
-  SPECIAL_CELLS: {
-    // Harf puanını 2 katına çıkaran hücreler
-    H2_CELLS: [
-      [0, 3],
-      [0, 11],
-      [2, 6],
-      [2, 8],
-      [3, 0],
-      [3, 7],
-      [3, 14],
-      [6, 2],
-      [6, 6],
-      [6, 8],
-      [6, 12],
-      [7, 3],
-      [7, 11],
-      [8, 2],
-      [8, 6],
-      [8, 8],
-      [8, 12],
-      [11, 0],
-      [11, 7],
-      [11, 14],
-      [12, 6],
-      [12, 8],
-      [14, 3],
-      [14, 11],
-    ],
-
-    // Harf puanını 3 katına çıkaran hücreler
-    H3_CELLS: [
-      [1, 5],
-      [1, 9],
-      [5, 1],
-      [5, 5],
-      [5, 9],
-      [5, 13],
-      [9, 1],
-      [9, 5],
-      [9, 9],
-      [9, 13],
-      [13, 5],
-      [13, 9],
-    ],
-
-    // Kelime puanını 2 katına çıkaran hücreler
-    K2_CELLS: [
-      [1, 1],
-      [1, 13],
-      [2, 2],
-      [2, 12],
-      [3, 3],
-      [3, 11],
-      [4, 4],
-      [4, 10],
-      [10, 4],
-      [10, 10],
-      [11, 3],
-      [11, 11],
-      [12, 2],
-      [12, 12],
-      [13, 1],
-      [13, 13],
-    ],
-
-    // Kelime puanını 3 katına çıkaran hücreler
-    K3_CELLS: [
-      [0, 0],
-      [0, 7],
-      [0, 14],
-      [7, 0],
-      [7, 14],
-      [14, 0],
-      [14, 7],
-      [14, 14],
-    ],
-
-    // Oyunun başlangıç noktası
-    STAR_CELL: [7, 7],
-  },
-
-  // Mayın ve ödül dağılımı
-  SPECIALS: {
-    MINES: [
-      { type: "PuanBolunmesi", count: 5 }, // Puanın %30'unu al
-      { type: "PuanTransferi", count: 4 }, // Puanı rakibe transfer et
-      { type: "HarfKaybi", count: 3 }, // Harfleri değiştir
-      { type: "EkstraHamleEngeli", count: 2 }, // Çarpanları iptal et
-      { type: "KelimeIptali", count: 2 }, // Puanı sıfırla
-    ],
-    REWARDS: [
-      { type: "BolgeYasagi", count: 2 }, // Bölge kısıtlaması
-      { type: "HarfYasagi", count: 3 }, // Harf dondurma
-      { type: "EkstraHamleJokeri", count: 2 }, // Ekstra hamle hakkı
-    ],
-  },
-};
-
-// Harflerin puan değerleri (Türkçe kelimelerdeki kullanım sıklığına göre)
+// Harflerin puan değerleri
 export const letterValues = {
-  A: 1, // En çok kullanılan harf
+  A: 1,
   B: 3,
   C: 4,
   Ç: 4,
   D: 3,
-  E: 1, // İkinci en çok kullanılan harf
+  E: 1,
   F: 7,
   G: 5,
-  Ğ: 8, // Az kullanılan, zor harf
+  Ğ: 8,
   H: 5,
   I: 2,
   İ: 1,
-  J: 10, // En az kullanılan harf
+  J: 10,
   K: 1,
   L: 1,
   M: 2,
@@ -136,21 +35,21 @@ export const letterValues = {
   JOKER: 0,
 };
 
-// Harflerin oyundaki sayıları
+// Harflerin adetleri
 export const letterCounts = {
-  A: 12, // En çok kullanılan harf
+  A: 12,
   B: 2,
   C: 2,
   Ç: 2,
   D: 2,
-  E: 8, // İkinci en çok kullanılan harf
+  E: 8,
   F: 1,
   G: 1,
   Ğ: 1,
   H: 1,
   I: 4,
   İ: 7,
-  J: 1, // Az kullanılan harf
+  J: 1,
   K: 7,
   L: 7,
   M: 4,
@@ -170,13 +69,13 @@ export const letterCounts = {
   JOKER: 2,
 };
 
-// Boş oyun tahtası oluştur
+// 15x15 boş oyun tahtası oluştur
 export const createEmptyBoard = () => {
   return Array(15)
-    .fill(null)
+    .fill()
     .map(() =>
       Array(15)
-        .fill(null)
+        .fill()
         .map(() => ({
           letter: null,
           type: null,
@@ -185,25 +84,85 @@ export const createEmptyBoard = () => {
     );
 };
 
-// Oyun tahtasını başlat (sabit özel hücreler)
+// Oyun tahtasını başlat (sabit özel hücreler) - Mayınlar ve ödüller hariç
 export const initializeBoard = () => {
   const board = createEmptyBoard();
-  const { SPECIAL_CELLS } = BOARD_CONFIG;
 
+  // Özel hücre tipleri
+
+  // H2 hücreleri (harf puanı 2 kat)
+  const h2Cells = [
+    [0, 5],
+    [0, 9],
+    [1, 6],
+    [1, 8],
+    [5, 0],
+    [5, 5],
+    [5, 9],
+    [5, 14],
+    [6, 1],
+    [6, 6],
+    [6, 8],
+    [6, 13],
+    [8, 1],
+    [8, 6],
+    [8, 8],
+    [8, 13],
+    [9, 0],
+    [9, 5],
+    [9, 9],
+    [9, 14],
+    [13, 6],
+    [13, 8],
+    [14, 5],
+    [14, 9],
+  ];
+
+  // H3 hücreleri (harf puanı 3 katı)
+  const h3Cells = [
+    [1, 1],
+    [1, 13],
+    [4, 4],
+    [4, 10],
+    [10, 4],
+    [10, 10],
+    [13, 1],
+    [13, 13],
+  ];
+
+  const k2Cells = [
+    [2, 7],
+    [3, 3],
+    [3, 11],
+    [7, 2],
+    [7, 12],
+    [11, 3],
+    [11, 11],
+    [12, 7],
+  ];
+
+  // K3 hücreleri (kelime puanı 3 kat)
+  const k3Cells = [
+    [0, 2],
+    [0, 12],
+    [2, 0],
+    [2, 14],
+    [12, 0],
+    [12, 14],
+    [14, 2],
+    [14, 12],
+  ];
   // Hücre tiplerini yerleştir
-  SPECIAL_CELLS.H2_CELLS.forEach(([row, col]) => {
+  h2Cells.forEach(([row, col]) => {
     board[row][col].type = "H2";
   });
-
-  SPECIAL_CELLS.H3_CELLS.forEach(([row, col]) => {
+  h3Cells.forEach(([row, col]) => {
     board[row][col].type = "H3";
   });
-
-  SPECIAL_CELLS.K2_CELLS.forEach(([row, col]) => {
+  k2Cells.forEach(([row, col]) => {
     board[row][col].type = "K2";
   });
-
-  SPECIAL_CELLS.K3_CELLS.forEach(([row, col]) => {
+  k3Cells.forEach(([row, col]) => {
     board[row][col].type = "K3";
   });
 
@@ -223,19 +182,25 @@ export const shuffleArray = (array) => {
   return newArray;
 };
 
-// Mayınları oluştur
+// Mayınlar oluştur
 export const generateMines = () => {
-  const mines = BOARD_CONFIG.SPECIALS.MINES.flatMap((mine) =>
-    Array(mine.count).fill(mine.type)
-  );
+  const mines = [
+    ...Array(5).fill("PuanBolunmesi"), // 5 adet
+    ...Array(4).fill("PuanTransferi"), // 4 adet
+    ...Array(3).fill("HarfKaybi"), // 3 adet
+    ...Array(2).fill("EkstraHamleEngeli"), // 2 adet
+    ...Array(2).fill("KelimeIptali"), // 2 adet
+  ];
   return shuffleArray(mines);
 };
 
-// Ödülleri oluştur
+// Ödüller oluştur
 export const generateRewards = () => {
-  const rewards = BOARD_CONFIG.SPECIALS.REWARDS.flatMap((reward) =>
-    Array(reward.count).fill(reward.type)
-  );
+  const rewards = [
+    ...Array(2).fill("BolgeYasagi"), // 2 adet
+    ...Array(3).fill("HarfYasagi"), // 3 adet
+    ...Array(2).fill("EkstraHamleJokeri"), // 2 adet
+  ];
   return shuffleArray(rewards);
 };
 
@@ -324,4 +289,6 @@ export const validateWord = (word) => {
 };
 
 // Harf değerlerini al
-export const getLetterValues = () => letterValues;
+export const getLetterValues = () => {
+  return letterValues;
+};

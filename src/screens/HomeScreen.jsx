@@ -23,6 +23,7 @@ import {
   generateRewards,
   placeSpecialsOnBoard,
 } from "../utils/GameUtils";
+import { checkGameTimers } from "../services/gameService";
 
 export default function HomeScreen() {
   const [user, setUser] = useState(null);
@@ -30,6 +31,27 @@ export default function HomeScreen() {
   const [completedGames, setCompletedGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("newGame");
+
+  useEffect(() => {
+    // Başlangıçta bir kez süreleri kontrol et
+    const checkTimers = async () => {
+      try {
+        await checkGameTimers();
+      } catch (err) {
+        console.error("Timer check error:", err);
+      }
+    };
+
+    checkTimers();
+
+    // Belirli aralıklarla süreleri kontrol et (örn. her dakika)
+    const timerInterval = setInterval(checkTimers, 60 * 1000); // 60 saniye
+
+    // Cleanup
+    return () => {
+      clearInterval(timerInterval);
+    };
+  }, []);
 
   // Load user data and games
   useEffect(() => {
@@ -271,6 +293,51 @@ export default function HomeScreen() {
     }
   };
 
+  const renderTimeLeft = (lastMoveTime, gameType) => {
+    if (!lastMoveTime) return "";
+
+    const now = Date.now();
+    const timePassed = now - lastMoveTime;
+
+    // Oyun tipine göre toplam süre
+    let totalTime;
+    switch (gameType) {
+      case "2min":
+        totalTime = 2 * 60 * 1000; // 2 dakika
+        break;
+      case "5min":
+        totalTime = 5 * 60 * 1000; // 5 dakika
+        break;
+      case "12hour":
+        totalTime = 12 * 60 * 60 * 1000; // 12 saat
+        break;
+      case "24hour":
+        totalTime = 24 * 60 * 60 * 1000; // 24 saat
+        break;
+      default:
+        totalTime = 24 * 60 * 60 * 1000; // Varsayılan 24 saat
+    }
+
+    // Kalan süre
+    const timeLeft = totalTime - timePassed;
+
+    if (timeLeft <= 0) {
+      return "Süre doldu!";
+    }
+
+    // Süreyi formatlama
+    if (timeLeft < 60 * 1000) {
+      // 1 dakikadan az
+      return `${Math.ceil(timeLeft / 1000)} saniye`;
+    } else if (timeLeft < 60 * 60 * 1000) {
+      // 1 saatten az
+      return `${Math.ceil(timeLeft / (60 * 1000))} dakika`;
+    } else {
+      // 1 saatten fazla
+      return `${Math.ceil(timeLeft / (60 * 60 * 1000))} saat`;
+    }
+  };
+
   // Create a new game
   const createGame = async (gameType, opponentId, opponentUsername) => {
     try {
@@ -363,14 +430,23 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* User Info */}
+
       <View style={styles.userInfo}>
         <View>
           <Text style={styles.username}>
             {user ? user.username : "Kullanıcı"}
           </Text>
-          <Text>
-            Başarı: %{user && user.successRate ? user.successRate : 0}
-          </Text>
+          <View style={styles.statsContainer}>
+            <Text style={styles.statsText}>
+              Başarı: %{user && user.successRate ? user.successRate : 0}
+            </Text>
+            <Text style={styles.statsText}>
+              Oyunlar: {user && user.gamesPlayed ? user.gamesPlayed : 0}
+            </Text>
+            <Text style={styles.statsText}>
+              Kazanılan: {user && user.gamesWon ? user.gamesWon : 0}
+            </Text>
+          </View>
         </View>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
           <Text style={styles.logoutText}>Çıkış Yap</Text>
@@ -477,6 +553,11 @@ export default function HomeScreen() {
                       ? "12 Saat"
                       : "24 Saat"}
                   </Text>
+                  {item.isMyTurn && (
+                    <Text style={styles.timeLeft}>
+                      {renderTimeLeft(item.lastMoveTime, item.gameType)}
+                    </Text>
+                  )}
                 </View>
               </View>
             </TouchableOpacity>
@@ -706,5 +787,21 @@ const styles = StyleSheet.create({
   drawText: {
     color: "blue",
     fontWeight: "bold",
+  },
+  statsContainer: {
+    flexDirection: "row",
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  statsText: {
+    fontSize: 12,
+    color: "#666",
+    marginRight: 10,
+  },
+  timeLeft: {
+    fontSize: 12,
+    color: "#e74c3c", // Kırmızı
+    fontWeight: "bold",
+    marginLeft: 10,
   },
 });

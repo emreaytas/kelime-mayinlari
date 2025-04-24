@@ -35,11 +35,12 @@ export default function Board({ selectedCells = [], onCellPress }) {
       [9, 0],
       [9, 5],
       [9, 9],
-      [9, 13],
+      [9, 14],
+      [12, 6],
       [13, 6],
       [13, 8],
       [14, 5],
-      [14, 11],
+      [14, 9],
     ];
 
     // H3 hücreleri (harf puanı 3 katı)
@@ -54,7 +55,6 @@ export default function Board({ selectedCells = [], onCellPress }) {
       [13, 13],
     ];
 
-    // K2 hücreleri (kelime puanı 2 katı)
     const k2Cells = [
       [2, 7],
       [3, 3],
@@ -66,7 +66,7 @@ export default function Board({ selectedCells = [], onCellPress }) {
       [12, 7],
     ];
 
-    // K3 hücreleri (kelime puanı 3 katı)
+    // K3 hücreleri (kelime puanı 3 kat)
     const k3Cells = [
       [0, 2],
       [0, 12],

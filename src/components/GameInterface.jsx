@@ -36,9 +36,159 @@ export default function GameInterface({ gameId }) {
   const [activeReward, setActiveReward] = useState(null);
   const [specialPopup, setSpecialPopup] = useState(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
+  const [remainingTime, setRemainingTime] = useState(null);
+  const [timerColor, setTimerColor] = useState("#333"); // Normal renk
 
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
+
+  useEffect(() => {
+    if (!game || !isUserTurn()) return;
+
+    // Süreyi hesapla
+    const calculateRemainingTime = () => {
+      const now = Date.now();
+      const lastMoveTime = game.lastMoveTime || game.startTime || now;
+      const timePassed = now - lastMoveTime;
+
+      // Oyun tipine göre toplam süre
+      let totalTime;
+      switch (game.gameType) {
+        case "2min":
+          totalTime = 2 * 60 * 1000; // 2 dakika
+          break;
+        case "5min":
+          totalTime = 5 * 60 * 1000; // 5 dakika
+          break;
+        case "12hour":
+          totalTime = 12 * 60 * 60 * 1000; // 12 saat
+          break;
+        case "24hour":
+          totalTime = 24 * 60 * 60 * 1000; // 24 saat
+          break;
+        default:
+          totalTime = 24 * 60 * 60 * 1000; // Varsayılan 24 saat
+      }
+
+      // Kalan süre
+      const timeLeft = totalTime - timePassed;
+
+      // Süreyi formatlama
+      let formattedTime = "";
+      if (timeLeft <= 0) {
+        formattedTime = "Süre doldu!";
+        setTimerColor("#e74c3c"); // Kırmızı
+      } else {
+        // Saat, dakika, saniye hesapla
+        const hours = Math.floor(timeLeft / (60 * 60 * 1000));
+        const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+        const seconds = Math.floor((timeLeft % (60 * 1000)) / 1000);
+
+        // Formatı belirle
+        if (hours > 0) {
+          formattedTime = `${hours}s ${minutes}d`;
+        } else if (minutes > 0) {
+          formattedTime = `${minutes}d ${seconds}s`;
+        } else {
+          formattedTime = `${seconds}s`;
+        }
+
+        // Son 30 saniye için renk değiştir
+        if (timeLeft < 30 * 1000) {
+          setTimerColor("#e74c3c"); // Kırmızı
+        } else if (timeLeft < 2 * 60 * 1000) {
+          // Son 2 dakika
+          setTimerColor("#f39c12"); // Turuncu
+        } else {
+          setTimerColor("#333"); // Normal
+        }
+      }
+
+      setRemainingTime(formattedTime);
+    };
+
+    // İlk hesaplama
+    calculateRemainingTime();
+
+    // Periyodik güncelleme
+    const timer = setInterval(() => {
+      calculateRemainingTime();
+    }, 1000); // Her saniye
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [game, isUserTurn]);
+
+  useEffect(() => {
+    // Oyun verilerini dinle
+    const setupGameListener = () => {
+      try {
+        unsubscribeRef.current = listenToGameChanges(
+          gameId,
+          (gameData, error) => {
+            setLoading(false);
+
+            if (error) {
+              console.error("Game data error:", error);
+              setError("Oyun verileri yüklenirken bir sorun oluştu");
+              return;
+            }
+
+            if (!gameData) {
+              console.error("No game data received");
+              setError("Oyun verileri bulunamadı");
+              return;
+            }
+
+            // Gelen verileri doğrula
+            if (!validateGameData(gameData)) {
+              console.error("Invalid game data structure:", gameData);
+              setError("Oyun verileri geçersiz format");
+              // Hatalı veriyi yine de depola (debug için)
+              setGame(gameData);
+              return;
+            }
+
+            // Geçerli oyun verileri
+            setGame(gameData);
+            setError(null);
+
+            // Oyun yeni başladıysa ve başlangıç kelimesi varsa bildiri göster
+            if (gameData.initialWord && !gameData._initialWordShown) {
+              Alert.alert(
+                "Oyun Başladı",
+                `Başlangıç kelimesi tahtaya yerleştirildi: ${gameData.initialWord}`,
+                [{ text: "Tamam" }]
+              );
+              // Tekrar göstermeyi önle
+              setGame({ ...gameData, _initialWordShown: true });
+            }
+
+            // Oyun tamamlandıysa ve daha önce popup gösterilmediyse
+            if (gameData.status === "completed" && !gameData._completedShown) {
+              showGameResultPopup(gameData);
+              // Tekrar göstermeyi önle
+              setGame({ ...gameData, _completedShown: true });
+            }
+          }
+        );
+      } catch (err) {
+        console.error("Error setting up game listener:", err);
+        setError("Oyun bağlantısı kurulamadı");
+        setLoading(false);
+      }
+    };
+
+    setupGameListener();
+
+    // Temizleme
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, [gameId]);
 
   // Kullanıcı ve oyun verilerini yükle
   useEffect(() => {
@@ -126,7 +276,30 @@ export default function GameInterface({ gameId }) {
 
     return true;
   };
+  // Oyun süresini formatlama için yardımcı fonksiyon
+  const formatGameDuration = (startTime, endTime) => {
+    if (!startTime || !endTime) return "Bilinmiyor";
 
+    const durationMs = endTime - startTime;
+    const seconds = Math.floor(durationMs / 1000);
+
+    if (seconds < 60) {
+      return `${seconds} saniye`;
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+      return `${minutes} dakika ${seconds % 60} saniye`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      return `${hours} saat ${minutes % 60} dakika`;
+    }
+
+    const days = Math.floor(hours / 24);
+    return `${days} gün ${hours % 24} saat`;
+  };
   // Oyun sonucunu göster
   const showGameResultPopup = (gameData) => {
     if (!auth.currentUser) return;
@@ -445,10 +618,40 @@ export default function GameInterface({ gameId }) {
   }
 
   // Oyun tamamlanmışsa
+
+  // Oyun tamamlanmışsa
   if (game.status === "completed") {
     const player1Won = (game.player1?.score || 0) > (game.player2?.score || 0);
     const player2Won = (game.player2?.score || 0) > (game.player1?.score || 0);
     const isDraw = (game.player1?.score || 0) === (game.player2?.score || 0);
+
+    // Kullanıcının oyuncu 1 mi yoksa 2 mi olduğunu belirle
+    const isPlayer1 = auth.currentUser?.uid === game.player1?.id;
+
+    // Oyunun bitme sebebini açıklayan mesajı belirle
+    let reasonMessage = "";
+    if (game.reason === "timeout") {
+      // Süre aşımı durumunda, kimin süresinin dolduğunu göster
+      const timedOutPlayerName =
+        game.timedOutPlayer === game.player1?.id
+          ? game.player1?.username
+          : game.player2?.username;
+      reasonMessage = `Süre aşımı: ${timedOutPlayerName} süresi doldu`;
+    } else if (game.reason === "surrender") {
+      // Teslim olma durumunda, kimin teslim olduğunu göster
+      const surrenderedPlayer = isPlayer1
+        ? player1Won
+          ? game.player2?.username
+          : game.player1?.username
+        : player2Won
+        ? game.player1?.username
+        : game.player2?.username;
+      reasonMessage = `${surrenderedPlayer} teslim oldu`;
+    } else if (game.reason === "pass") {
+      reasonMessage = "Üst üste pas geçildi";
+    } else {
+      reasonMessage = "Oyun normal şekilde tamamlandı";
+    }
 
     return (
       <SafeAreaView style={styles.container}>
@@ -475,13 +678,29 @@ export default function GameInterface({ gameId }) {
 
           {isDraw && <Text style={styles.drawText}>Berabere!</Text>}
 
-          <Text style={styles.reasonText}>
-            {game.reason === "surrender"
-              ? "Oyuncu teslim oldu"
-              : game.reason === "pass"
-              ? "Her iki oyuncu da pas geçti"
-              : "Oyun normal şekilde tamamlandı"}
-          </Text>
+          <Text style={styles.reasonText}>{reasonMessage}</Text>
+
+          {/* İstatistikler */}
+          <View style={styles.statsContainer}>
+            <Text style={styles.statsTitle}>Oyun İstatistikleri</Text>
+            <Text style={styles.statsText}>
+              Oyun Süresi:{" "}
+              {formatGameDuration(game.startTime, game.completedAt)}
+            </Text>
+            <Text style={styles.statsText}>
+              Oyun Tipi:{" "}
+              {game.gameType === "2min"
+                ? "2 Dakika"
+                : game.gameType === "5min"
+                ? "5 Dakika"
+                : game.gameType === "12hour"
+                ? "12 Saat"
+                : "24 Saat"}
+            </Text>
+            <Text style={styles.statsText}>
+              Başlangıç Kelimesi: {game.initialWord || "Bilinmiyor"}
+            </Text>
+          </View>
 
           <TouchableOpacity
             style={styles.homeButton}
@@ -641,6 +860,24 @@ export default function GameInterface({ gameId }) {
             ? "Sıra sizde!"
             : `${opponent?.username || "Rakip"} oynuyor...`}
         </Text>
+
+        {isUserTurn() && remainingTime && (
+          <Text style={[styles.timerText, { color: timerColor }]}>
+            Kalan süre: {remainingTime}
+          </Text>
+        )}
+
+        {game && game.gameType && (
+          <Text style={styles.gameTypeText}>
+            {game.gameType === "2min"
+              ? "2 Dakika Oyunu"
+              : game.gameType === "5min"
+              ? "5 Dakika Oyunu"
+              : game.gameType === "12hour"
+              ? "12 Saat Oyunu"
+              : "24 Saat Oyunu"}
+          </Text>
+        )}
       </View>
 
       {/* Özel Öğe Popup'ı */}
@@ -909,5 +1146,34 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: "center",
     width: "100%",
+  },
+  timerText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginTop: 5,
+  },
+  gameTypeText: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 3,
+  },
+  statsContainer: {
+    backgroundColor: "#f9f9f9",
+    padding: 15,
+    borderRadius: 8,
+    marginVertical: 15,
+    width: "100%",
+    alignItems: "flex-start",
+  },
+  statsTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 8,
+    color: "#2e6da4",
+  },
+  statsText: {
+    fontSize: 14,
+    marginBottom: 5,
+    color: "#555",
   },
 });

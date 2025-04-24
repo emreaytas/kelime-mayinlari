@@ -18,23 +18,23 @@ export const getRandomStartingWord = () => {
   return filteredWords[randomIndex].toUpperCase(); // Hepsi büyük harf olarak döndür
 };
 
-// Başlangıç kelimesini tahtaya yerleştir (ortadaki yıldızın altından başlayarak)
+// Başlangıç kelimesini tahtaya yerleştir (ortadaki yıldızın üzerinden sağa doğru başlayarak)
 export const placeInitialWord = (board, word) => {
   // Tahta kopyasını oluştur
   const newBoard = JSON.parse(JSON.stringify(board));
 
   // Başlangıç pozisyonu: Merkez yıldız (7,7)
-  const startRow = 7;
+  const startRow = 8;
   const startCol = 7;
 
   // İlk harfi merkez yıldıza yerleştir
   newBoard[startRow][startCol].letter = word[0];
 
-  // Geri kalan harfleri dikey olarak aşağıya doğru yerleştir
+  // Geri kalan harfleri yatay olarak sağa doğru yerleştir
   for (let i = 1; i < word.length; i++) {
     // Tahta sınırlarını kontrol et
-    if (startRow + i < 15) {
-      newBoard[startRow + i][startCol].letter = word[i];
+    if (startCol + i < 15) {
+      newBoard[startRow][startCol + i].letter = word[i];
     }
   }
 
