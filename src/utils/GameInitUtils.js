@@ -1,6 +1,5 @@
 // src/utils/GameInitUtils.js
 import wordList from "../assets/wordList";
-import { letterValues } from "./GameBoardUtils";
 
 // Kelime listesinden rastgele maksimum 7 harfli bir kelime seç
 export const getRandomStartingWord = () => {
