@@ -166,8 +166,8 @@ export default function RegisterScreen() {
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.inner}>
               <View style={styles.headerContainer}>
-                <Text style={styles.header}>Kelime Mayınları</Text>
-                <Text style={styles.subheader}>Hesap Oluştur</Text>
+                <Text style={styles.header}>KELİME MAYINLARI</Text>
+                <Text style={styles.subheader}>HESAP OLUŞTUR</Text>
               </View>
 
               <View style={styles.formContainer}>
@@ -194,7 +194,7 @@ export default function RegisterScreen() {
 
                 <TextInput
                   style={styles.input}
-                  placeholder="Şifre (en az 8 karakter, büyük/küçük harf ve rakam)"
+                  placeholder="Şifre"
                   placeholderTextColor="#888"
                   secureTextEntry
                   value={password}
@@ -226,7 +226,7 @@ export default function RegisterScreen() {
               <View style={styles.footer}>
                 <Text style={styles.footerText}>Zaten hesabınız var mı?</Text>
                 <TouchableOpacity onPress={() => router.back()}>
-                  <Text style={styles.linkText}>Giriş Yap</Text>
+                  <Text style={styles.linkText}>GİRİŞ YAP</Text>
                 </TouchableOpacity>
               </View>
             </View>

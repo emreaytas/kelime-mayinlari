@@ -1,4 +1,4 @@
-// src/components/GameInterface.jsx - Düzeltilmiş Versiyon
+// src/components/GameInterface.jsx
 import React, { useState, useEffect } from "react";
 import {
   View,
