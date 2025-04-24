@@ -1,7 +1,13 @@
-// src/components/GameBoard.jsx
+// src/components/GameBoard.jsx - Düzeltilmiş versiyon
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Dimensions } from "react-native";
-import { TouchableOpacity } from "react-native-gesture-handler";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Dimensions,
+  TouchableOpacity,
+} from "react-native";
+import BoardCell from "./BoardCell";
 
 // Ekran genişliğine göre tahta boyutunu ayarla
 const windowWidth = Dimensions.get("window").width;
@@ -14,6 +20,15 @@ export default function GameBoard({
   onCellPress,
   showSpecials = false, // Debug modunda mayın ve ödülleri gösterme seçeneği
 }) {
+  // Board yapısını kontrol et
+  if (!board || !Array.isArray(board)) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Tahta verileri yüklenemedi</Text>
+      </View>
+    );
+  }
+
   // Hücre tipine göre renk ve etiket
   const getCellStyle = (type) => {
     switch (type) {
@@ -56,64 +71,10 @@ export default function GameBoard({
     return selectedCells.some((cell) => cell.row === row && cell.col === col);
   };
 
-  // Tahta oluştur
-  const renderBoard = () => {
-    if (!board || !Array.isArray(board)) {
-      return <Text style={styles.errorText}>Tahta yüklenemedi</Text>;
-    }
-
-    return board.map((row, rowIndex) => (
-      <View key={`row-${rowIndex}`} style={styles.row}>
-        {row.map((cell, colIndex) => {
-          // Hücre tipi ve stil
-          const { backgroundColor, label } = getCellStyle(cell.type);
-
-          // Harfin kendisi ve puanı
-          const letter = cell.letter;
-          const points = letter
-            ? letter === "JOKER"
-              ? 0
-              : getLetterPoints(letter)
-            : null;
-
-          // Özel öğe (mayın/ödül)
-          const specialIcon = showSpecials ? getSpecialIcon(cell.special) : "";
-
-          return (
-            <TouchableOpacity
-              key={`cell-${rowIndex}-${colIndex}`}
-              style={[
-                styles.cell,
-                { backgroundColor },
-                isCellSelected(rowIndex, colIndex) && styles.selectedCell,
-                letter && styles.filledCell,
-              ]}
-              onPress={() => onCellPress && onCellPress(rowIndex, colIndex)}
-              disabled={letter !== null}
-            >
-              {letter ? (
-                <View style={styles.letterContainer}>
-                  <Text style={styles.letter}>
-                    {letter === "JOKER" ? "*" : letter}
-                  </Text>
-                  {points !== null && (
-                    <Text style={styles.points}>{points}</Text>
-                  )}
-                </View>
-              ) : specialIcon ? (
-                <Text style={styles.special}>{specialIcon}</Text>
-              ) : (
-                <Text style={styles.cellLabel}>{label}</Text>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    ));
-  };
-
   // Harf puanlarını hesapla
   const getLetterPoints = (letter) => {
+    if (!letter) return null;
+
     const letterValues = {
       A: 1,
       B: 3,
@@ -146,7 +107,69 @@ export default function GameBoard({
       Z: 4,
       JOKER: 0,
     };
-    return letterValues[letter] || 0;
+
+    return letter === "JOKER" ? 0 : letterValues[letter] || 0;
+  };
+
+  // Tahta oluştur
+  const renderBoard = () => {
+    return board.map((row, rowIndex) => (
+      <View key={`row-${rowIndex}`} style={styles.row}>
+        {row.map((cell, colIndex) => {
+          // Null kontrolü ekle
+          if (!cell) {
+            return (
+              <TouchableOpacity
+                key={`cell-${rowIndex}-${colIndex}`}
+                style={[styles.cell, { backgroundColor: "#f5f5f5" }]}
+                onPress={() => onCellPress && onCellPress(rowIndex, colIndex)}
+              >
+                <Text></Text>
+              </TouchableOpacity>
+            );
+          }
+
+          // Hücre tipi ve stil
+          const { backgroundColor, label } = getCellStyle(cell.type);
+
+          // Harfin kendisi ve puanı
+          const letter = cell.letter;
+          const points = letter ? getLetterPoints(letter) : null;
+
+          // Özel öğe (mayın/ödül)
+          const specialIcon = showSpecials ? getSpecialIcon(cell.special) : "";
+
+          return (
+            <TouchableOpacity
+              key={`cell-${rowIndex}-${colIndex}`}
+              style={[
+                styles.cell,
+                { backgroundColor },
+                isCellSelected(rowIndex, colIndex) && styles.selectedCell,
+                letter && styles.filledCell,
+              ]}
+              onPress={() => onCellPress && onCellPress(rowIndex, colIndex)}
+              disabled={letter !== null && letter !== undefined}
+            >
+              {letter ? (
+                <View style={styles.letterContainer}>
+                  <Text style={styles.letter}>
+                    {letter === "JOKER" ? "*" : letter}
+                  </Text>
+                  {points !== null && (
+                    <Text style={styles.points}>{points}</Text>
+                  )}
+                </View>
+              ) : specialIcon ? (
+                <Text style={styles.special}>{specialIcon}</Text>
+              ) : (
+                <Text style={styles.cellLabel}>{label}</Text>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    ));
   };
 
   return (
@@ -208,8 +231,18 @@ const styles = StyleSheet.create({
   special: {
     fontSize: CELL_SIZE * 0.5,
   },
+  errorContainer: {
+    width: BOARD_SIZE,
+    height: BOARD_SIZE,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#000",
+    backgroundColor: "#fff8dc",
+  },
   errorText: {
     color: "red",
-    marginVertical: 20,
+    textAlign: "center",
+    padding: 20,
   },
 });
