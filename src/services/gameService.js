@@ -60,11 +60,14 @@ export const createNewGame = async (
       player2Rack,
       player1Rewards: [],
       player2Rewards: [],
-      turnPlayer: firstPlayer,
+      turnPlayer: firstPlayer, // Rastgele seçilen ilk oyuncu
       startTime: Date.now(),
       lastMoveTime: Date.now(),
       gameType,
       status: "active",
+      firstMove: true, // İlk hamle henüz yapılmadı
+      centerRequired: true, // İlk hamlede merkez yıldız gerekli
+      consecutivePasses: 0, // Arka arkaya pas geçme sayısı
     };
 
     // Firebase'e oyun verisini kaydet
@@ -216,6 +219,17 @@ export const placeWord = async (gameId, placedCells) => {
       throw new Error("Sıra sizde değil");
     }
 
+    // İlk hamle kontrolü - merkez hücreyi içermeli
+    if (game.firstMove || game.centerRequired) {
+      const centerCellIncluded = placedCells.some(
+        (cell) => cell.row === 7 && cell.col === 7
+      );
+
+      if (!centerCellIncluded) {
+        throw new Error("İlk hamle merkez yıldıza yerleştirilmelidir!");
+      }
+    }
+
     // Kullanıcı bilgisi
     const isPlayer1 = game.player1.id === userId;
     const userRack = isPlayer1 ? game.player1Rack : game.player2Rack;
@@ -316,6 +330,9 @@ export const placeWord = async (gameId, placedCells) => {
       lastMoveTime: Date.now(),
       turnPlayer:
         game.player1.id === userId ? game.player2.id : game.player1.id,
+      firstMove: false, // İlk hamle yapıldı
+      centerRequired: false, // Artık merkez gerekli değil
+      consecutivePasses: 0, // Pas geçme sayacını sıfırla
     };
 
     // Puanları güncelle
@@ -362,6 +379,48 @@ export const placeWord = async (gameId, placedCells) => {
       }
     }
 
+    // Oyun bitme kontrolü - her iki oyuncunun da harfleri bitmiş mi?
+    const allLettersUsed =
+      userRackCopy.length === 0 ||
+      (isPlayer1
+        ? game.player2Rack.length === 0
+        : game.player1Rack.length === 0);
+
+    // Harf havuzu ve oyuncuların raklarında kalan harfler
+    const noMoreLetters =
+      game.letterPool.length === 0 &&
+      (userRackCopy.length === 0 ||
+        (isPlayer1
+          ? game.player2Rack.length === 0
+          : game.player1Rack.length === 0));
+
+    if (allLettersUsed || noMoreLetters) {
+      updates.status = "completed";
+      updates.completedAt = Date.now();
+      updates.reason = "finished";
+
+      // Kalan harflerin puanını hesapla
+      if (userRackCopy.length === 0) {
+        // Bu oyuncu tüm harflerini kullandı, diğer oyuncunun kalan harflerinin puanı ona gider
+        const opponentRack = isPlayer1 ? game.player2Rack : game.player1Rack;
+        let remainingPoints = 0;
+
+        opponentRack.forEach((letterObj) => {
+          const letter =
+            typeof letterObj === "object" ? letterObj.letter : letterObj;
+          remainingPoints += letter === "JOKER" ? 0 : letterValues[letter] || 0;
+        });
+
+        if (isPlayer1) {
+          updates["player1.score"] += remainingPoints;
+          updates["player2.score"] -= remainingPoints;
+        } else {
+          updates["player2.score"] += remainingPoints;
+          updates["player1.score"] -= remainingPoints;
+        }
+      }
+    }
+
     // Firebase güncelle
     await update(ref(database, `games/${gameId}`), updates);
 
@@ -370,6 +429,7 @@ export const placeWord = async (gameId, placedCells) => {
       effects,
       rewards: rewards.map((r) => r.type),
       nextPlayer: updates.turnPlayer,
+      gameEnded: updates.status === "completed",
     };
   } catch (error) {
     console.error("Kelime yerleştirme hatası:", error);
@@ -585,19 +645,23 @@ export const passTurn = async (gameId) => {
       turnPlayer:
         game.player1.id === userId ? game.player2.id : game.player1.id,
       lastMoveTime: Date.now(),
-      lastPassPlayer: userId,
+      consecutivePasses: (game.consecutivePasses || 0) + 1,
     };
+
+    // Her iki oyuncu da pas geçtiyse (ardışık 2 pas)
+    if (updates.consecutivePasses >= 2) {
+      updates.status = "completed";
+      updates.completedAt = Date.now();
+      updates.reason = "pass";
+    }
 
     // Firebase güncelle
     await update(ref(database, `games/${gameId}`), updates);
 
-    // Her iki oyuncu da pas geçtiyse oyunu bitir
-    if (game.lastPassPlayer === updates.turnPlayer) {
-      await endGame(gameId, "pass");
-      return { success: true, gameEnded: true };
-    }
-
-    return { success: true, gameEnded: false };
+    return {
+      success: true,
+      gameEnded: updates.status === "completed",
+    };
   } catch (error) {
     console.error("Pas geçme hatası:", error);
     throw error;
