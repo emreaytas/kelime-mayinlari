@@ -13,7 +13,6 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   ActivityIndicator,
-  Image,
 } from "react-native";
 import { router } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -70,8 +69,10 @@ export default function LoginScreen() {
         // If username exists, get the associated email
         email = usernameDoc.data().email;
       } else {
-        // If not found by username, check if input is an email
-        if (username.includes("@")) {
+        // Daha kapsamlı bir e-posta doğrulaması için düzenli ifade (regex) kullanma
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+        if (emailRegex.test(username)) {
           email = username;
         } else {
           // Create a "fake" email from username for Firebase Auth
@@ -79,7 +80,6 @@ export default function LoginScreen() {
           email = `${username}@kelimemayinlari.app`;
         }
       }
-
       // Attempt to sign in
       await signInWithEmailAndPassword(auth, email, password);
 
@@ -147,7 +147,7 @@ export default function LoginScreen() {
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.buttonText}>Giriş Yap</Text>
+                  <Text style={styles.buttonText}>GİRİŞ YAP</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -155,7 +155,7 @@ export default function LoginScreen() {
             <View style={styles.footer}>
               <Text style={styles.footerText}>Hesabınız yok mu?</Text>
               <TouchableOpacity onPress={() => router.push("/register")}>
-                <Text style={styles.linkText}>Kayıt Ol</Text>
+                <Text style={styles.linkText}>KAYIT OL</Text>
               </TouchableOpacity>
             </View>
           </View>

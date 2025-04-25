@@ -1,7 +1,5 @@
 // src/assets/wordList.js
 export default [
-  "a",
-  "a",
   "ab",
   "aba",
   "abacı",
@@ -76184,5 +76182,5 @@ export default [
   "zürriyetsiz",
   "zürriyetsizlik",
   "züyuf",
-  "züyuf akçe"
+  "züyuf akçe",
 ];

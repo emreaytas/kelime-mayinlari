@@ -40,7 +40,6 @@ export default function RegisterScreen() {
     return re.test(password);
   };
 
-  // Check if username contains only allowed characters
   const validateUsername = (username) => {
     const re = /^[a-zA-Z0-9_]+$/;
     return re.test(username);

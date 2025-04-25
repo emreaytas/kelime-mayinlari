@@ -17,6 +17,8 @@ import {
   letterValues,
 } from "../utils/GameBoardUtils";
 
+import wordList from "../assets/wordList";
+
 // Hamle süresini kontrol et ve süresi dolanları işaretle
 export const checkGameTimers = async () => {
   try {
@@ -954,6 +956,20 @@ export const getUserActiveGames = async () => {
     console.error("Aktif oyunları alma hatası:", error);
     throw error;
   }
+};
+
+export const validateWord = (word) => {
+  // true false verecek bize.
+  // kelime var mı yok mu bunu kontrol edecek.
+  if (!word || typeof word !== "string" || word.length < 2) {
+    return false;
+  }
+
+  // Kelimeyi küçük harfe çevirerek kontrol et (case-insensitive)
+  const normalizedWord = word.toLowerCase().trim();
+
+  // Kelime listesinde arama yap
+  return wordList.includes(normalizedWord);
 };
 
 // Kullanıcının tamamlanmış oyunlarını getir
