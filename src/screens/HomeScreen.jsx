@@ -438,7 +438,10 @@ export default function HomeScreen() {
           </Text>
           <View style={styles.statsContainer}>
             <Text style={styles.statsText}>
-              Başarı: %{user && user.successRate ? user.successRate : 0}
+              Başarı: %
+              {user && user.gamesPlayed && user.gamesPlayed > 0
+                ? Math.round(((user.gamesWon || 0) / user.gamesPlayed) * 100)
+                : 0}
             </Text>
             <Text style={styles.statsText}>
               Oyunlar: {user && user.gamesPlayed ? user.gamesPlayed : 0}

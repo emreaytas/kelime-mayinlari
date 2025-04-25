@@ -121,9 +121,11 @@ export default function RegisterScreen() {
       // Also store user in Realtime Database for game interactions
       await set(ref(database, `users/${user.uid}`), {
         username,
-        successRate: 0,
+        email,
         gamesPlayed: 0,
         gamesWon: 0,
+        successRate: 0,
+        createdAt: new Date().toISOString(),
       });
 
       setLoading(false);

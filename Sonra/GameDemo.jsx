@@ -9,12 +9,12 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
-import GameBoard from "../components/GameBoard";
+import GameBoard from "../src/components/GameBoard";
 import {
   generateLetterPool,
   distributeLetters,
   initializeBoard,
-} from "../utils/GameUtils";
+} from "../src/utils/GameUtils";
 
 export default function GameDemo() {
   const [board, setBoard] = useState(null);

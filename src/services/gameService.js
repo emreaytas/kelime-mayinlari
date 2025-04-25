@@ -1,5 +1,11 @@
 // src/services/gameService.js
-import { database, auth } from "../firebase/config";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import wordList from "../assets/wordList";
+import {
+  updateGameStatistics,
+  saveGameRecord,
+} from "../services/userStatsService";
+import { auth, firestore, database } from "../firebase/config";
 import {
   ref,
   set,
@@ -17,24 +23,21 @@ import {
   letterValues,
 } from "../utils/GameBoardUtils";
 
-import wordList from "../assets/wordList";
-
 // Hamle süresini kontrol et ve süresi dolanları işaretle
 export const checkGameTimers = async () => {
   try {
     // Aktif oyunları getir
     const gamesRef = ref(database, "games");
     const snapshot = await get(gamesRef);
-
     if (!snapshot.exists()) {
       return { processed: 0 };
     }
-
     const now = Date.now();
     let processedCount = 0;
 
     // Her oyun için kontrol et
-    snapshot.forEach(async (childSnapshot) => {
+    const promises = [];
+    snapshot.forEach((childSnapshot) => {
       const gameId = childSnapshot.key;
       const gameData = childSnapshot.val();
 
@@ -68,53 +71,96 @@ export const checkGameTimers = async () => {
 
       // Süre aşıldı mı?
       if (timeSinceLastMove > timeLimit) {
-        // Oyunu tamamlandı olarak işaretle
-        const currentTurnPlayer = gameData.turnPlayer;
-        const player1Id = gameData.player1.id;
-        const player2Id = gameData.player2.id;
+        // İşlemi promises dizisine ekle
+        const processGame = async () => {
+          try {
+            // Oyunu tamamlandı olarak işaretle
+            const currentTurnPlayer = gameData.turnPlayer;
+            const player1Id = gameData.player1.id;
+            const player2Id = gameData.player2.id;
 
-        // Süresi geçen oyuncunun karşı tarafını kazanan olarak işaretle
-        const winnerId =
-          currentTurnPlayer === player1Id ? player2Id : player1Id;
+            // Süresi geçen oyuncunun karşı tarafını kazanan olarak işaretle
+            const winnerId =
+              currentTurnPlayer === player1Id ? player2Id : player1Id;
 
-        // Oyuncuların mevcut puanlarını al
-        let player1Score = gameData.player1.score || 0;
-        let player2Score = gameData.player2.score || 0;
+            // Oyuncuların mevcut puanlarını al
+            let player1Score = gameData.player1.score || 0;
+            let player2Score = gameData.player2.score || 0;
 
-        // Kazanan oyuncuya bonus puan ver
-        if (winnerId === player1Id) {
-          player1Score += 25; // Süre aşımı bonusu
-        } else {
-          player2Score += 25; // Süre aşımı bonusu
-        }
+            // Kazanan oyuncuya bonus puan ver
+            if (winnerId === player1Id) {
+              player1Score += 25; // Süre aşımı bonusu
+            } else {
+              player2Score += 25; // Süre aşımı bonusu
+            }
 
-        // Oyunu güncelle
-        const updates = {
-          status: "completed",
-          completedAt: now,
-          reason: "timeout",
-          timedOutPlayer: currentTurnPlayer,
-          winner: winnerId,
-          "player1.score": player1Score,
-          "player2.score": player2Score,
+            // Kazananları belirle
+            const player1Win = winnerId === player1Id;
+            const player2Win = winnerId === player2Id;
+            const isDraw = false; // Süre aşımında beraberlik olmaz
+
+            // Oyunu güncelle
+            const updates = {
+              status: "completed",
+              completedAt: now,
+              reason: "timeout",
+              timedOutPlayer: currentTurnPlayer,
+              winner: winnerId,
+              "player1.score": player1Score,
+              "player2.score": player2Score,
+            };
+
+            const updatedGameData = {
+              ...gameData,
+              ...updates,
+            };
+
+            // Firebase'de güncelle
+            await update(ref(database, `games/${gameId}`), updates);
+
+            // Tamamlanan oyun olarak kopyala
+            await set(
+              ref(database, `completedGames/${gameId}`),
+              updatedGameData
+            );
+
+            // Firestore'a oyun kaydını ve istatistikleri ekle
+            try {
+              // Oyun kaydını sakla
+              await saveGameRecord(gameId, updatedGameData);
+
+              // Her oyuncu için istatistikleri güncelle
+              const player1Result = player1Win ? "win" : "loss";
+              const player2Result = player2Win ? "win" : "loss";
+
+              await updateGameStatistics(
+                player1Id,
+                gameId,
+                player1Result,
+                player1Score
+              );
+              await updateGameStatistics(
+                player2Id,
+                gameId,
+                player2Result,
+                player2Score
+              );
+            } catch (error) {
+              console.error("Error updating game statistics:", error);
+            }
+
+            processedCount++;
+          } catch (error) {
+            console.error(`Error processing game ${gameId}:`, error);
+          }
         };
 
-        // Firebase'de güncelle
-        await update(ref(database, `games/${gameId}`), updates);
-
-        // Tamamlanan oyun olarak kopyala
-        await set(ref(database, `completedGames/${gameId}`), {
-          ...gameData,
-          ...updates,
-        });
-
-        // Oyuncu istatistiklerini güncelle
-        await updateUserStats(player1Id, winnerId === player1Id);
-        await updateUserStats(player2Id, winnerId === player2Id);
-
-        processedCount++;
+        promises.push(processGame());
       }
     });
+
+    // Tüm işlemlerin tamamlanmasını bekle
+    await Promise.all(promises);
 
     return { processed: processedCount };
   } catch (error) {
@@ -230,6 +276,59 @@ export const createNewGame = async (
   } catch (error) {
     console.error("Oyun oluşturma hatası:", error);
     throw error;
+  }
+};
+
+const updateUserStatistics = async (userId, isWin) => {
+  try {
+    // Firestore'daki kullanıcı referansı
+    const userRef = doc(firestore, "users", userId);
+
+    // Realtime Database'deki kullanıcı referansı
+    const rtdbUserRef = ref(database, `users/${userId}`);
+
+    // Firestore'dan mevcut kullanıcı verilerini al
+    const userDoc = await getDoc(userRef);
+
+    if (!userDoc.exists()) {
+      console.warn(`User with ID ${userId} not found for stats update`);
+      return false;
+    }
+
+    const userData = userDoc.data();
+
+    // İstatistikleri güncelle
+    const gamesPlayed = (userData.gamesPlayed || 0) + 1;
+    const gamesWon = isWin
+      ? (userData.gamesWon || 0) + 1
+      : userData.gamesWon || 0;
+    const successRate =
+      gamesPlayed > 0 ? Math.round((gamesWon / gamesPlayed) * 100) : 0;
+
+    // Firestore'da güncelle
+    await updateDoc(userRef, {
+      gamesPlayed,
+      gamesWon,
+      successRate,
+      lastUpdated: new Date().toISOString(),
+    });
+
+    // Realtime Database'de de güncelle
+    await update(rtdbUserRef, {
+      gamesPlayed,
+      gamesWon,
+      successRate,
+      lastUpdated: new Date().toISOString(),
+    });
+
+    console.log(
+      `Updated stats for user ${userId}: Games: ${gamesPlayed}, Wins: ${gamesWon}, Success: ${successRate}%`
+    );
+
+    return true;
+  } catch (error) {
+    console.error("Stats update error:", error);
+    return false;
   }
 };
 
@@ -856,11 +955,6 @@ export const endGame = async (gameId, reason) => {
         player1Score += 50; // Bonus puan
       }
     }
-    // Normal bitiş (tüm harfler bitti)
-    else if (reason === "finished") {
-      // Kalan harflerin puanını hesapla
-      // ...mevcut kodu koru...
-    }
 
     // Oyunu tamamlandı olarak işaretle
     const gameData = {
@@ -901,9 +995,30 @@ export const endGame = async (gameId, reason) => {
     // Aktif oyunlardan kaldır
     await update(ref(database, `games/${gameId}`), { status: "completed" });
 
-    // Oyuncu istatistiklerini güncelle
-    await updateUserStats(game.player1.id, player1Win);
-    await updateUserStats(game.player2.id, player2Win);
+    // Firestore'a oyun kaydını ve istatistikleri ekle
+    try {
+      // Oyun kaydını sakla
+      await saveGameRecord(gameId, gameData);
+
+      // Her oyuncu için istatistikleri güncelle
+      const player1Result = player1Win ? "win" : isDraw ? "tie" : "loss";
+      const player2Result = player2Win ? "win" : isDraw ? "tie" : "loss";
+
+      await updateGameStatistics(
+        game.player1.id,
+        gameId,
+        player1Result,
+        player1Score
+      );
+      await updateGameStatistics(
+        game.player2.id,
+        gameId,
+        player2Result,
+        player2Score
+      );
+    } catch (error) {
+      console.error("Error updating game statistics:", error);
+    }
 
     return {
       success: true,
@@ -956,20 +1071,6 @@ export const getUserActiveGames = async () => {
     console.error("Aktif oyunları alma hatası:", error);
     throw error;
   }
-};
-
-export const validateWord = (word) => {
-  // true false verecek bize.
-  // kelime var mı yok mu bunu kontrol edecek.
-  if (!word || typeof word !== "string" || word.length < 2) {
-    return false;
-  }
-
-  // Kelimeyi küçük harfe çevirerek kontrol et (case-insensitive)
-  const normalizedWord = word.toLowerCase().trim();
-
-  // Kelime listesinde arama yap
-  return wordList.includes(normalizedWord);
 };
 
 // Kullanıcının tamamlanmış oyunlarını getir

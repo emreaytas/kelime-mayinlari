@@ -12,8 +12,8 @@ import {
   createGameBoard,
   generateLetterPool,
   distributeLetters,
-} from "../utils/GameBoardUtils";
-import GameBoard from "../components/GameBoard";
+} from "../src/utils/GameBoardUtils";
+import GameBoard from "../src/components/GameBoard";
 
 export default function GameSetupScreen() {
   const [board, setBoard] = useState(null);
