@@ -618,8 +618,6 @@ export default function GameInterface({ gameId }) {
   }
 
   // Oyun tamamlanmışsa
-
-  // Oyun tamamlanmışsa
   if (game.status === "completed") {
     const player1Won = (game.player1?.score || 0) > (game.player2?.score || 0);
     const player2Won = (game.player2?.score || 0) > (game.player1?.score || 0);
