@@ -18,16 +18,40 @@ export const getRandomStartingWord = () => {
   return filteredWords[randomIndex].toUpperCase(); // Hepsi büyük harf olarak döndür
 };
 
-// Başlangıç kelimesini tahtaya yerleştir (ortadaki yıldızın üzerinden sağa doğru başlayarak)
+export const setupInitialGame = (game) => {
+  if (!game || !game.board || !game.letterPool) {
+    console.error("Geçersiz oyun verisi");
+    return game;
+  }
+
+  // Oyun kopyasını oluştur
+  const newGame = { ...game };
+
+  // Rastgele bir başlangıç kelimesi seç
+  const startingWord = getRandomStartingWord();
+
+  // Kelimeyi tahtaya yerleştir
+  newGame.board = placeInitialWord(newGame.board, startingWord);
+
+  // İlk hamle yapıldığını belirt
+  newGame.firstMove = false;
+  newGame.centerRequired = false;
+
+  // Başlangıç kelimesini kaydet
+  newGame.initialWord = startingWord;
+
+  return newGame;
+};
+
+// Başlangıç kelimesini tahtaya yerleştir
 export const placeInitialWord = (board, word) => {
   // Tahta kopyasını oluştur
   const newBoard = JSON.parse(JSON.stringify(board));
 
-  // Başlangıç pozisyonu: Merkez yıldız (7,7)
+  // Başlangıç pozisyonu: (8,7)
   const startRow = 8;
   const startCol = 7;
 
-  // İlk harfi merkez yıldıza yerleştir
   newBoard[startRow][startCol].letter = word[0];
 
   // Geri kalan harfleri yatay olarak sağa doğru yerleştir
@@ -39,25 +63,4 @@ export const placeInitialWord = (board, word) => {
   }
 
   return newBoard;
-};
-
-// Başlangıç kelimesini yerleştirdikten sonra bu harfleri havuzdan çıkar
-export const removeInitialWordFromPool = (letterPool, word) => {
-  // Havuz kopyasını oluştur
-  const newPool = [...letterPool];
-
-  // Her harf için havuzdan bir tane çıkar
-  for (const letter of word) {
-    const index = newPool.findIndex(
-      (item) =>
-        (typeof item === "string" && item === letter) ||
-        (typeof item === "object" && item.letter === letter)
-    );
-
-    if (index !== -1) {
-      newPool.splice(index, 1);
-    }
-  }
-
-  return newPool;
 };

@@ -17,14 +17,8 @@ import {
   validateWord,
   letterValues,
 } from "../utils/GameBoardUtils";
-import {
-  getRandomStartingWord,
-  placeInitialWord,
-  removeInitialWordFromPool,
-  setupInitialGame,
-} from "../utils/InitialWordUtils";
+import { setupInitialGame } from "../utils/InitialWordUtils"; // veya doğru dosya adı
 import { updateGameStatistics, saveGameRecord } from "./userStatsService";
-
 // Hamle süresini kontrol et ve süresi dolanları işaretle
 export const checkGameTimers = async () => {
   try {
@@ -317,7 +311,6 @@ export const createNewGame = async (
 
     // Rastgele başlangıç kelimesini oluştur ve yerleştir
     const gameWithInitialWord = setupInitialGame(initialGameData);
-
     // Firebase'e oyun verisini kaydet
     await set(newGameRef, gameWithInitialWord);
 
