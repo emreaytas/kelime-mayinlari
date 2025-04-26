@@ -17,7 +17,7 @@ import {
   validateWord,
   letterValues,
 } from "../utils/GameBoardUtils";
-import { setupInitialGame } from "../utils/InitialWordUtils"; // veya doğru dosya adı
+import { setupInitialGame } from "../utils/InitialsWordList"; // veya doğru dosya adı
 import { updateGameStatistics, saveGameRecord } from "./userStatsService";
 // Hamle süresini kontrol et ve süresi dolanları işaretle
 export const checkGameTimers = async () => {

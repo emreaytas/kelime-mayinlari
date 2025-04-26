@@ -17,6 +17,27 @@ export const getRandomStartingWord = () => {
   const randomIndex = Math.floor(Math.random() * filteredWords.length);
   return filteredWords[randomIndex].toUpperCase(); // Hepsi büyük harf olarak döndür
 };
+// Başlangıç kelimesini tahtaya yerleştir
+export const placeInitialWord = (board, word) => {
+  // Tahta kopyasını oluştur
+  const newBoard = JSON.parse(JSON.stringify(board));
+
+  // Başlangıç pozisyonu: (8,7)
+  const startRow = 8;
+  const startCol = 7;
+
+  newBoard[startRow][startCol].letter = word[0];
+
+  // Geri kalan harfleri yatay olarak sağa doğru yerleştir
+  for (let i = 1; i < word.length; i++) {
+    // Tahta sınırlarını kontrol et
+    if (startCol + i < 15) {
+      newBoard[startRow][startCol + i].letter = word[i];
+    }
+  }
+
+  return newBoard;
+};
 
 export const setupInitialGame = (game) => {
   if (!game || !game.board || !game.letterPool) {
@@ -41,26 +62,4 @@ export const setupInitialGame = (game) => {
   newGame.initialWord = startingWord;
 
   return newGame;
-};
-
-// Başlangıç kelimesini tahtaya yerleştir
-export const placeInitialWord = (board, word) => {
-  // Tahta kopyasını oluştur
-  const newBoard = JSON.parse(JSON.stringify(board));
-
-  // Başlangıç pozisyonu: (8,7)
-  const startRow = 8;
-  const startCol = 7;
-
-  newBoard[startRow][startCol].letter = word[0];
-
-  // Geri kalan harfleri yatay olarak sağa doğru yerleştir
-  for (let i = 1; i < word.length; i++) {
-    // Tahta sınırlarını kontrol et
-    if (startCol + i < 15) {
-      newBoard[startRow][startCol + i].letter = word[i];
-    }
-  }
-
-  return newBoard;
 };

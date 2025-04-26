@@ -78,12 +78,6 @@ export const setupInitialGame = (game) => {
   // Kelimeyi tahtaya yerleştir
   newGame.board = placeInitialWord(newGame.board, startingWord);
 
-  // Kullanılan harfleri havuzdan çıkar
-  newGame.letterPool = removeInitialWordFromPool(
-    newGame.letterPool,
-    startingWord
-  );
-
   // İlk hamle yapıldığını belirt
   newGame.firstMove = false;
   newGame.centerRequired = false;
