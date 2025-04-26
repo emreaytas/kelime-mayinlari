@@ -3,7 +3,7 @@ import React from "react";
 import { TouchableOpacity, Text, StyleSheet } from "react-native";
 
 export default function LetterTile({ letter, points, isSelected, onPress }) {
-  // If letter is undefined or null, don't render anything
+  // Harf tanımsızsa gösterme
   if (!letter) {
     return null;
   }
@@ -23,18 +23,18 @@ const styles = StyleSheet.create({
   tile: {
     width: 40,
     height: 40,
-    backgroundColor: "#FFF8DC", // Cream color
+    backgroundColor: "#FFF8DC", // Krem rengi
     borderRadius: 4,
     justifyContent: "center",
     alignItems: "center",
     margin: 3,
     borderWidth: 1,
-    borderColor: "#DEB887", // Dark cream
+    borderColor: "#DEB887", // Koyu krem
     elevation: 2,
   },
   selectedTile: {
-    backgroundColor: "#FFD700", // Gold
-    borderColor: "#DAA520", // Dark gold
+    backgroundColor: "#FFD700", // Altın rengi (seçili)
+    borderColor: "#DAA520", // Koyu altın
     borderWidth: 2,
   },
   letter: {

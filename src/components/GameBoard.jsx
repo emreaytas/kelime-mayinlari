@@ -3,23 +3,24 @@ import React from "react";
 import { View, StyleSheet, Dimensions } from "react-native";
 import BoardCell from "./BoardCell";
 
-// Get screen dimensions to make the board responsive
+// Ekran boyutlarına göre tahta boyutunu hesapla
 const { width } = Dimensions.get("window");
-const BOARD_SIZE = Math.min(width - 20, 375); // Screen width or max 375px
-const CELL_SIZE = BOARD_SIZE / 15; // For a 15x15 board
+const BOARD_SIZE = Math.min(width - 20, 375); // Ekran genişliği veya maksimum 375px
+const CELL_SIZE = BOARD_SIZE / 15; // 15x15 bir tahta için hücre boyutu
 
 export default function GameBoard({
   board,
   selectedCells = [],
   onCellPress,
-  showSpecials = false, // Debug option to show mines and rewards
+  showSpecials = false, // Debug modu için mayın ve ödülleri göster
 }) {
-  // Check if a cell is selected
+  // Bir hücrenin seçili olup olmadığını kontrol et
   const isCellSelected = (row, col) => {
     return selectedCells.some((cell) => cell.row === row && cell.col === col);
   };
 
-  // Create the board rows and cells
+  // Tahta satırları ve hücrelerini oluştur
+  // Render işlemi sırasında hem mevcut harfleri hem de geçici yerleştirilen harfleri göster
   const renderBoard = () => {
     const rows = [];
 
@@ -29,14 +30,32 @@ export default function GameBoard({
       for (let j = 0; j < 15; j++) {
         const cellData = board[i][j] || {};
 
+        // Bu hücre için seçili bir kelime var mı kontrol et
+        const selectedCell = selectedCells.find(
+          (cell) => cell.row === i && cell.col === j
+        );
+
+        // Eğer bu hücre seçiliyse, geçici harfi göster
+        let displayLetter = cellData.letter;
+        let isTemporary = false;
+
+        if (selectedCell) {
+          const userRack = getUserRack(); // Bu fonksiyonu props olarak almalısınız
+          const letterObj = userRack[selectedCell.rackIndex];
+          displayLetter =
+            typeof letterObj === "object" ? letterObj.letter : letterObj;
+          isTemporary = true;
+        }
+
         cells.push(
           <BoardCell
             key={`cell-${i}-${j}`}
-            letter={cellData.letter}
+            letter={displayLetter}
             points={cellData.points}
             type={cellData.type}
             special={showSpecials ? cellData.special : null}
-            isSelected={isCellSelected(i, j)}
+            isSelected={!!selectedCell}
+            isTemporary={isTemporary}
             onPress={() => onCellPress && onCellPress(i, j)}
           />
         );

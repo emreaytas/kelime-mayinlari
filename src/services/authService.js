@@ -5,8 +5,8 @@ import {
   signOut,
   updateProfile,
 } from "firebase/auth";
-import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
-import { auth, firestore } from "../firebase/config";
+import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore"; // firestore kullanabilmek için.
+import { auth, firestore } from "../firebase/config"; // yapılandırma ayarlarını buradan görebiliriz.
 
 // Kullanıcı kaydı
 export const registerUser = async (username, email, password) => {
@@ -75,6 +75,10 @@ export const loginUser = async (username, password) => {
       email,
       password
     );
+    console.log(user.username + " giriş yaptı user: " + user);
+    console.log(
+      userCredential.user + " userCredential bilgisi... authService."
+    );
     return userCredential.user;
   } catch (error) {
     let errorMessage = "Giriş sırasında bir hata oluştu.";
@@ -92,6 +96,7 @@ export const loginUser = async (username, password) => {
 // Çıkış yap
 export const signOutUser = async () => {
   try {
+    console.log(user + " çıkış yaptı...");
     await signOut(auth);
     return true;
   } catch (error) {
@@ -103,6 +108,7 @@ export const signOutUser = async () => {
 export const getUserProfile = async (userId) => {
   try {
     const userDoc = await getDoc(doc(firestore, "users", userId));
+    console.log("authService.js bilgiler: " + userDoc);
     if (!userDoc.exists()) {
       throw new Error("Kullanıcı bulunamadı.");
     }
@@ -140,6 +146,10 @@ export const updateUserStats = async (userId, isWin) => {
       gamesWon,
       successRate,
     });
+    console.log(
+      "updateUserStats metotu authService.js ",
+      gamesPlayed + " " + gamesWon + " " + successRate
+    );
 
     return {
       gamesPlayed,

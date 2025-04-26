@@ -5,17 +5,14 @@ import {
   getDoc,
   updateDoc,
   arrayUnion,
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
-  limit,
+  increment,
+  Timestamp,
 } from "firebase/firestore";
-import { auth, firestore } from "../firebase/config";
+import { auth, firestore, database } from "../firebase/config";
+import { ref, update, get } from "firebase/database";
 
 /**
- * Kullanıcı için Firestore'da bir belge oluşturur veya günceller
+ * Kullanıcı profili oluşturur veya günceller
  * @param {string} userId - Kullanıcı ID'si
  * @param {object} userData - Kullanıcı bilgileri
  */
@@ -30,7 +27,7 @@ export const createOrUpdateUserProfile = async (userId, userData) => {
       // Mevcut kullanıcıyı güncelle
       await updateDoc(userRef, {
         ...userData,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: Timestamp.now(),
       });
     } else {
       // Yeni kullanıcı oluştur
@@ -43,10 +40,19 @@ export const createOrUpdateUserProfile = async (userId, userData) => {
         successRate: 0,
         playedGameIds: [],
         totalPoints: 0,
-        createdAt: new Date().toISOString(),
-        lastUpdated: new Date().toISOString(),
+        highestScore: 0,
+        lastGame: null,
+        createdAt: Timestamp.now(),
+        lastUpdated: Timestamp.now(),
       });
     }
+
+    // Realtime Database'de de eşzamanlı olarak güncelle
+    const rtdbUserRef = ref(database, `users/${userId}`);
+    await update(rtdbUserRef, {
+      ...userData,
+      lastUpdated: Date.now(),
+    });
 
     return true;
   } catch (error) {
@@ -77,6 +83,23 @@ export const getUserProfile = async (userId) => {
 };
 
 /**
+ * Mevcut giriş yapmış kullanıcının profilini getirir
+ * @returns {object} - Kullanıcı profil bilgileri
+ */
+export const getCurrentUserProfile = async () => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error("No authenticated user");
+    }
+
+    return await getUserProfile(auth.currentUser.uid);
+  } catch (error) {
+    console.error("Error getting current user profile:", error);
+    throw error;
+  }
+};
+
+/**
  * Oyun bittiğinde kullanıcı istatistiklerini günceller
  * @param {string} userId - Kullanıcı ID'si
  * @param {string} gameId - Tamamlanan oyun ID'si
@@ -94,44 +117,82 @@ export const updateGameStatistics = async (userId, gameId, result, points) => {
 
     const userData = docSnap.data();
 
-    // İstatistikleri hesapla
-    const gamesPlayed = (userData.gamesPlayed || 0) + 1;
-    const gamesWon =
-      result === "win" ? (userData.gamesWon || 0) + 1 : userData.gamesWon || 0;
-    const gamesLost =
-      result === "loss"
-        ? (userData.gamesLost || 0) + 1
-        : userData.gamesLost || 0;
-    const gamesTied =
-      result === "tie"
-        ? (userData.gamesTied || 0) + 1
-        : userData.gamesTied || 0;
-    const totalPoints = (userData.totalPoints || 0) + points;
-    const successRate = Math.round((gamesWon / gamesPlayed) * 100);
+    // Firestore güncellemeleri için batch hazırla
+    const updates = {
+      playedGameIds: arrayUnion(gameId),
+      gamesPlayed: increment(1),
+      totalPoints: increment(points),
+      lastGame: {
+        gameId,
+        result,
+        points,
+        timestamp: Timestamp.now(),
+      },
+      lastUpdated: Timestamp.now(),
+    };
+
+    // Sonuca göre ilgili alanları güncelle
+    if (result === "win") {
+      updates.gamesWon = increment(1);
+    } else if (result === "loss") {
+      updates.gamesLost = increment(1);
+    } else if (result === "tie") {
+      updates.gamesTied = increment(1);
+    }
+
+    // En yüksek skoru güncelle
+    if (points > (userData.highestScore || 0)) {
+      updates.highestScore = points;
+    }
 
     // Firestore'u güncelle
-    await updateDoc(userRef, {
-      gamesPlayed,
-      gamesWon,
-      gamesLost,
-      gamesTied,
-      totalPoints,
-      successRate,
-      playedGameIds: arrayUnion(gameId),
-      lastUpdated: new Date().toISOString(),
-    });
+    await updateDoc(userRef, updates);
+
+    // Realtime Database'i de güncelle
+    const rtdbUserRef = ref(database, `users/${userId}`);
+    const rtdbUserSnapshot = await get(rtdbUserRef);
+
+    if (rtdbUserSnapshot.exists()) {
+      const rtdbUserData = rtdbUserSnapshot.val();
+
+      const rtdbUpdates = {
+        gamesPlayed: (rtdbUserData.gamesPlayed || 0) + 1,
+        totalPoints: (rtdbUserData.totalPoints || 0) + points,
+        lastUpdated: Date.now(),
+      };
+
+      if (result === "win") {
+        rtdbUpdates.gamesWon = (rtdbUserData.gamesWon || 0) + 1;
+      } else if (result === "loss") {
+        rtdbUpdates.gamesLost = (rtdbUserData.gamesLost || 0) + 1;
+      } else if (result === "tie") {
+        rtdbUpdates.gamesTied = (rtdbUserData.gamesTied || 0) + 1;
+      }
+
+      // Başarı oranını hesapla
+      const totalGames = rtdbUpdates.gamesPlayed;
+      const wins =
+        result === "win"
+          ? (rtdbUserData.gamesWon || 0) + 1
+          : rtdbUserData.gamesWon || 0;
+
+      rtdbUpdates.successRate =
+        totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
+
+      await update(rtdbUserRef, rtdbUpdates);
+    }
+
+    // Başarı oranını asenkron olarak güncelle
+    await updateSuccessRate(userId);
 
     console.log(
-      `Updated stats for user ${userId}: Result=${result}, Games=${gamesPlayed}, Win/Loss/Tie=${gamesWon}/${gamesLost}/${gamesTied}, Success=${successRate}%`
+      `Updated stats for user ${userId}: Result=${result}, Points=${points}`
     );
 
     return {
-      gamesPlayed,
-      gamesWon,
-      gamesLost,
-      gamesTied,
-      totalPoints,
-      successRate,
+      success: true,
+      result,
+      points,
     };
   } catch (error) {
     console.error(`Stats update error for user ${userId}:`, error);
@@ -140,7 +201,51 @@ export const updateGameStatistics = async (userId, gameId, result, points) => {
 };
 
 /**
- * Oyun kaydını Firestore'da saklar
+ * Kullanıcının başarı oranını yeniden hesaplar ve günceller
+ * @param {string} userId - Kullanıcı ID'si
+ */
+export const updateSuccessRate = async (userId) => {
+  try {
+    const userRef = doc(firestore, "users", userId);
+    const docSnap = await getDoc(userRef);
+
+    if (!docSnap.exists()) {
+      throw new Error("User not found");
+    }
+
+    const userData = docSnap.data();
+    const gamesPlayed = userData.gamesPlayed || 0;
+    const gamesWon = userData.gamesWon || 0;
+
+    // Başarı oranını hesapla
+    const successRate =
+      gamesPlayed > 0 ? Math.round((gamesWon / gamesPlayed) * 100) : 0;
+
+    // Firestore'u güncelle
+    await updateDoc(userRef, {
+      successRate,
+      lastUpdated: Timestamp.now(),
+    });
+
+    // Realtime Database'i de güncelle
+    const rtdbUserRef = ref(database, `users/${userId}`);
+    await update(rtdbUserRef, {
+      successRate,
+      lastUpdated: Date.now(),
+    });
+
+    return {
+      success: true,
+      successRate,
+    };
+  } catch (error) {
+    console.error(`Success rate update error for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Oyun kaydını Firestore'a saklar
  * @param {string} gameId - Oyun ID'si
  * @param {object} gameData - Oyun verileri
  */
@@ -150,7 +255,9 @@ export const saveGameRecord = async (gameId, gameData) => {
 
     await setDoc(gameRef, {
       ...gameData,
-      completedAt: new Date().toISOString(),
+      completedAt: Timestamp.fromMillis(gameData.completedAt || Date.now()),
+      startTime: Timestamp.fromMillis(gameData.startTime || Date.now()),
+      lastSaved: Timestamp.now(),
     });
 
     return true;
@@ -163,26 +270,48 @@ export const saveGameRecord = async (gameId, gameData) => {
 /**
  * Kullanıcının oyun geçmişini getirir
  * @param {string} userId - Kullanıcı ID'si
- * @param {number} limit - Getirilecek maksimum oyun sayısı
- * @returns {array} - Oyun geçmişi
+ * @param {number} limit - Maksimum oyun sayısı
+ * @returns {Array} - Oyun geçmişi
  */
-export const getUserGameHistory = async (userId, limitCount = 10) => {
+export const getUserGameHistory = async (userId, limit = 10) => {
   try {
-    const gamesQuery = query(
-      collection(firestore, "games"),
-      where("players", "array-contains", userId),
-      orderBy("completedAt", "desc"),
-      limit(limitCount)
-    );
+    const userRef = doc(firestore, "users", userId);
+    const userDoc = await getDoc(userRef);
 
-    const querySnapshot = await getDocs(gamesQuery);
+    if (!userDoc.exists()) {
+      throw new Error("User not found");
+    }
+
+    const userData = userDoc.data();
+    const gameIds = userData.playedGameIds || [];
+
+    // En son 'limit' kadar oyunu al
+    const recentGameIds = gameIds.slice(-limit);
+
+    // Her oyunun verilerini al
     const games = [];
 
-    querySnapshot.forEach((doc) => {
-      games.push({
-        id: doc.id,
-        ...doc.data(),
-      });
+    for (const gameId of recentGameIds) {
+      try {
+        const gameRef = doc(firestore, "games", gameId);
+        const gameDoc = await getDoc(gameRef);
+
+        if (gameDoc.exists()) {
+          games.push({
+            id: gameId,
+            ...gameDoc.data(),
+          });
+        }
+      } catch (err) {
+        console.error(`Error getting game ${gameId}:`, err);
+      }
+    }
+
+    // Tamamlanma tarihine göre sırala
+    games.sort((a, b) => {
+      const dateA = a.completedAt ? a.completedAt.toMillis() : 0;
+      const dateB = b.completedAt ? b.completedAt.toMillis() : 0;
+      return dateB - dateA;
     });
 
     return games;
@@ -193,58 +322,33 @@ export const getUserGameHistory = async (userId, limitCount = 10) => {
 };
 
 /**
- * En yüksek başarı oranına sahip kullanıcıları getirir (liderlik tablosu)
- * @param {number} limit - Getirilecek maksimum kullanıcı sayısı
- * @returns {array} - Kullanıcılar listesi
+ * Kullanıcının toplam istatistiklerini getirir
+ * @param {string} userId - Kullanıcı ID'si (opsiyonel, verilmezse giriş yapmış kullanıcı)
+ * @returns {object} - İstatistikler
  */
-export const getLeaderboard = async (limitCount = 10) => {
+export const getUserStatsSummary = async (userId = null) => {
   try {
-    // Minimum oyun sayısı şartı (örn. en az 5 oyun oynamış olmalı)
-    const minGamesPlayed = 5;
+    const uid = userId || (auth.currentUser ? auth.currentUser.uid : null);
 
-    const usersQuery = query(
-      collection(firestore, "users"),
-      where("gamesPlayed", ">=", minGamesPlayed),
-      orderBy("successRate", "desc"),
-      limit(limitCount)
-    );
-
-    const querySnapshot = await getDocs(usersQuery);
-    const users = [];
-
-    querySnapshot.forEach((doc) => {
-      const userData = doc.data();
-      users.push({
-        id: doc.id,
-        username: userData.username,
-        successRate: userData.successRate,
-        gamesPlayed: userData.gamesPlayed,
-        gamesWon: userData.gamesWon,
-      });
-    });
-
-    return users;
-  } catch (error) {
-    console.error("Error getting leaderboard:", error);
-    throw error;
-  }
-};
-
-/**
- * Mevcut giriş yapmış kullanıcının istatistiklerini getirir
- * @returns {object} - Kullanıcı istatistikleri
- */
-export const getCurrentUserStats = async () => {
-  try {
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      throw new Error("No user is signed in");
+    if (!uid) {
+      throw new Error("No user ID provided or signed in");
     }
 
-    return await getUserProfile(currentUser.uid);
+    const userData = await getUserProfile(uid);
+
+    return {
+      username: userData.username,
+      gamesPlayed: userData.gamesPlayed || 0,
+      gamesWon: userData.gamesWon || 0,
+      gamesLost: userData.gamesLost || 0,
+      gamesTied: userData.gamesTied || 0,
+      successRate: userData.successRate || 0,
+      totalPoints: userData.totalPoints || 0,
+      highestScore: userData.highestScore || 0,
+      lastGame: userData.lastGame || null,
+    };
   } catch (error) {
-    console.error("Error getting current user stats:", error);
+    console.error("Error getting user stats summary:", error);
     throw error;
   }
 };

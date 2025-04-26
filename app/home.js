@@ -10,6 +10,7 @@ export default function Home() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
+    console.log("home.js useEffect çalıştı.");
     // Listen for auth state to change
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
@@ -30,8 +31,13 @@ export default function Home() {
 
   if (!user) {
     // Not signed in, redirect to login
+    console.log("home.js Redirect href çalıştı");
+    console.log(user);
+
     return <Redirect href="/" />;
   }
+
+  console.log("home.js Redirect HomeScreen href çalıştı.");
 
   // User is signed in, show home screen
   return <HomeScreen />;

@@ -13,25 +13,27 @@ import {
 import { router } from "expo-router";
 import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { ref, onValue, push, set, get } from "firebase/database";
+import { ref, onValue, push, set, get, remove } from "firebase/database";
 import { auth, firestore, database } from "../firebase/config";
 import {
-  generateLetterPool,
-  distributeLetters,
-  initializeBoard,
-  generateMines,
-  generateRewards,
-  placeSpecialsOnBoard,
-} from "../utils/GameUtils";
-import { checkGameTimers } from "../services/gameService";
+  joinMatchmaking,
+  cancelMatchmaking,
+  getUserActiveGames,
+  getUserCompletedGames,
+  checkGameTimers,
+} from "../services/gameService";
 
 export default function HomeScreen() {
   const [user, setUser] = useState(null);
   const [activeGames, setActiveGames] = useState([]);
   const [completedGames, setCompletedGames] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [matchmakingLoading, setMatchmakingLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("newGame");
+  const [waitingForMatch, setWaitingForMatch] = useState(false);
+  const [matchmakingType, setMatchmakingType] = useState(null);
 
+  // Periyodik süre kontrolü
   useEffect(() => {
     // Başlangıçta bir kez süreleri kontrol et
     const checkTimers = async () => {
@@ -44,8 +46,8 @@ export default function HomeScreen() {
 
     checkTimers();
 
-    // Belirli aralıklarla süreleri kontrol et (örn. her dakika)
-    const timerInterval = setInterval(checkTimers, 60 * 1000); // 60 saniye
+    // Belirli aralıklarla süreleri kontrol et (her dakika)
+    const timerInterval = setInterval(checkTimers, 60 * 1000);
 
     // Cleanup
     return () => {
@@ -53,7 +55,7 @@ export default function HomeScreen() {
     };
   }, []);
 
-  // Load user data and games
+  // Kullanıcı verileri ve oyunları yükle
   useEffect(() => {
     const loadUserData = async () => {
       try {
@@ -63,109 +65,24 @@ export default function HomeScreen() {
           return;
         }
 
-        // Get user profile from Firestore
+        // Firestore'dan kullanıcı profili bilgilerini al
         const userDoc = await getDoc(
           doc(firestore, "users", auth.currentUser.uid)
         );
 
         if (userDoc.exists()) {
           setUser(userDoc.data());
-          console.log("User data loaded:", userDoc.data().username);
         } else {
           console.warn("User document not found in Firestore");
         }
 
-        // Load active games
-        const activeGamesRef = ref(database, "games");
-        const unsubscribeActive = onValue(activeGamesRef, (snapshot) => {
-          const gamesData = snapshot.val() || {};
+        // Aktif oyunları yükle
+        loadActiveGames();
 
-          // Filter games for the current user that are active
-          const userGames = Object.entries(gamesData)
-            .filter(([_, game]) => {
-              const isActive = game.status === "active";
-              const isUserGame =
-                game.player1?.id === auth.currentUser.uid ||
-                game.player2?.id === auth.currentUser.uid;
-              return isActive && isUserGame;
-            })
-            .map(([id, game]) => {
-              const isPlayer1 = game.player1?.id === auth.currentUser.uid;
-              return {
-                id,
-                opponent: isPlayer1
-                  ? game.player2?.username
-                  : game.player1?.username,
-                myScore: isPlayer1
-                  ? game.player1?.score || 0
-                  : game.player2?.score || 0,
-                opponentScore: isPlayer1
-                  ? game.player2?.score || 0
-                  : game.player1?.score || 0,
-                isMyTurn: game.turnPlayer === auth.currentUser.uid,
-                gameType: game.gameType,
-                lastMoveTime: game.lastMoveTime || game.startTime,
-              };
-            });
-
-          setActiveGames(userGames);
-          console.log(`Loaded ${userGames.length} active games`);
-        });
-
-        // Load completed games
-        const completedGamesRef = ref(database, "completedGames");
-        const unsubscribeCompleted = onValue(completedGamesRef, (snapshot) => {
-          const gamesData = snapshot.val() || {};
-
-          // Filter completed games for the current user
-          const userCompletedGames = Object.entries(gamesData)
-            .filter(([_, game]) => {
-              return (
-                game.player1?.id === auth.currentUser.uid ||
-                game.player2?.id === auth.currentUser.uid
-              );
-            })
-            .map(([id, game]) => {
-              const isPlayer1 = game.player1?.id === auth.currentUser.uid;
-              const myScore = isPlayer1
-                ? game.player1?.score || 0
-                : game.player2?.score || 0;
-              const opponentScore = isPlayer1
-                ? game.player2?.score || 0
-                : game.player1?.score || 0;
-
-              let result = "draw";
-              if (myScore > opponentScore) {
-                result = "win";
-              } else if (myScore < opponentScore) {
-                result = "loss";
-              }
-
-              return {
-                id,
-                opponent: isPlayer1
-                  ? game.player2?.username
-                  : game.player1?.username,
-                myScore,
-                opponentScore,
-                result,
-                completedAt: game.completedAt || 0,
-              };
-            })
-            // Sort by completion time (most recent first)
-            .sort((a, b) => b.completedAt - a.completedAt);
-
-          setCompletedGames(userCompletedGames);
-          console.log(`Loaded ${userCompletedGames.length} completed games`);
-        });
+        // Tamamlanmış oyunları yükle
+        loadCompletedGames();
 
         setLoading(false);
-
-        // Cleanup listeners on unmount
-        return () => {
-          unsubscribeActive();
-          unsubscribeCompleted();
-        };
       } catch (error) {
         console.error("Error loading data:", error);
         setLoading(false);
@@ -177,9 +94,116 @@ export default function HomeScreen() {
     };
 
     loadUserData();
-  }, []);
 
-  // Handle creating/joining a game with the selected time limit
+    // Eşleşme kontrolü için listener
+    const setupMatchmakingListener = () => {
+      if (!auth.currentUser || !matchmakingType) return null;
+
+      // Kullanıcının eşleşme durumunu dinle
+      return onValue(
+        ref(database, `matchmaking/${matchmakingType}/${auth.currentUser.uid}`),
+        async (snapshot) => {
+          // Eğer listeden kaldırıldıysa ve bekleme durumundaysa, yeni oyunları kontrol et
+          if (!snapshot.exists() && waitingForMatch) {
+            setWaitingForMatch(false);
+            setMatchmakingType(null);
+
+            // Son oluşturulan oyunları ara
+            const games = await getUserActiveGames();
+
+            if (games && games.length > 0) {
+              // En son oluşturulan oyunu bul ve ona yönlendir
+              const latestGame = games.sort(
+                (a, b) => b.startTime - a.startTime
+              )[0];
+              if (latestGame) {
+                router.push(`/game?gameId=${latestGame.id}`);
+              }
+            }
+          }
+        }
+      );
+    };
+
+    const unsubscribeMatchmaking = setupMatchmakingListener();
+
+    return () => {
+      if (unsubscribeMatchmaking) {
+        unsubscribeMatchmaking();
+      }
+    };
+  }, [waitingForMatch, matchmakingType]);
+
+  // Aktif oyunları yükle
+  const loadActiveGames = async () => {
+    try {
+      // Gerçek servis fonksiyonunu kullan
+      const games = await getUserActiveGames();
+
+      // Oyun verilerini formatlayarak state'e kaydet
+      const formattedGames = games.map((game) => {
+        const isPlayer1 = game.player1?.id === auth.currentUser.uid;
+        return {
+          id: game.id,
+          opponent: isPlayer1 ? game.player2?.username : game.player1?.username,
+          myScore: isPlayer1
+            ? game.player1?.score || 0
+            : game.player2?.score || 0,
+          opponentScore: isPlayer1
+            ? game.player2?.score || 0
+            : game.player1?.score || 0,
+          isMyTurn: game.turnPlayer === auth.currentUser.uid,
+          gameType: game.gameType,
+          lastMoveTime: game.lastMoveTime || game.startTime,
+        };
+      });
+
+      setActiveGames(formattedGames);
+    } catch (error) {
+      console.error("Error loading active games:", error);
+    }
+  };
+
+  // Tamamlanmış oyunları yükle
+  const loadCompletedGames = async () => {
+    try {
+      // Gerçek servis fonksiyonunu kullan
+      const games = await getUserCompletedGames();
+
+      // Oyun verilerini formatlayarak state'e kaydet
+      const formattedGames = games.map((game) => {
+        const isPlayer1 = game.player1?.id === auth.currentUser.uid;
+        const myScore = isPlayer1
+          ? game.player1?.score || 0
+          : game.player2?.score || 0;
+        const opponentScore = isPlayer1
+          ? game.player2?.score || 0
+          : game.player1?.score || 0;
+
+        let result = "draw";
+        if (myScore > opponentScore) {
+          result = "win";
+        } else if (myScore < opponentScore) {
+          result = "loss";
+        }
+
+        return {
+          id: game.id,
+          opponent: isPlayer1 ? game.player2?.username : game.player1?.username,
+          myScore,
+          opponentScore,
+          result,
+          completedAt: game.completedAt || 0,
+        };
+      });
+
+      setCompletedGames(formattedGames);
+    } catch (error) {
+      console.error("Error loading completed games:", error);
+    }
+  };
+
+  // Eşleşme işlemi
   const handleJoinGame = async (gameType) => {
     try {
       if (!user) {
@@ -187,112 +211,31 @@ export default function HomeScreen() {
         return;
       }
 
-      setLoading(true);
+      setMatchmakingLoading(true);
+      setMatchmakingType(gameType);
 
-      // Check matchmaking for waiting players
-      const matchmakingRef = ref(database, `matchmaking/${gameType}`);
-      const matchmakingSnapshot = await get(matchmakingRef);
-      const waitingPlayers = matchmakingSnapshot.val() || {};
+      // Eşleşme servisini kullan
+      const result = await joinMatchmaking(gameType);
 
-      // Find waiting players (exclude current user)
-      const otherPlayerIds = Object.keys(waitingPlayers).filter(
-        (id) => id !== auth.currentUser.uid
-      );
-
-      if (otherPlayerIds.length > 0) {
-        // Match found - pair with the first waiting player
-        const opponentId = otherPlayerIds[0];
-
-        // Get opponent info
-        const opponentSnapshot = await getDoc(
-          doc(firestore, "users", opponentId)
-        );
-
-        if (!opponentSnapshot.exists()) {
-          throw new Error("Opponent user data not found");
-        }
-
-        const opponentData = opponentSnapshot.data();
-
-        // Remove opponent from matchmaking
-        await set(ref(database, `matchmaking/${gameType}/${opponentId}`), null);
-
-        // Create a new game
-        await createGame(gameType, opponentId, opponentData.username);
-      } else {
-        // No match found - add to waiting list
-        await set(
-          ref(database, `matchmaking/${gameType}/${auth.currentUser.uid}`),
-          {
-            timestamp: Date.now(),
-            username: user.username,
-          }
-        );
-
-        setLoading(false);
-
-        // Show waiting message
-        Alert.alert(
-          "Eşleşme Bekleniyor",
-          "Diğer oyuncu bekleniyor. Eşleşme bulunduğunda otomatik olarak oyuna yönlendirileceksiniz.",
-          [
-            {
-              text: "İptal Et",
-              onPress: async () => {
-                // Cancel matchmaking if user presses cancel
-                await set(
-                  ref(
-                    database,
-                    `matchmaking/${gameType}/${auth.currentUser.uid}`
-                  ),
-                  null
-                );
-              },
-              style: "cancel",
-            },
-          ]
-        );
-
-        // Listen for matchmaking status changes
-        const matchListener = onValue(
-          ref(database, `matchmaking/${gameType}/${auth.currentUser.uid}`),
-          async (snapshot) => {
-            // If removed from waiting list, check for new games
-            if (!snapshot.exists()) {
-              // Look for recently created games
-              const activeGamesSnapshot = await get(ref(database, "games"));
-              const gamesData = activeGamesSnapshot.val() || {};
-
-              // Find the latest game for this user
-              const latestGame = Object.entries(gamesData)
-                .filter(([_, game]) => {
-                  return (
-                    (game.player1?.id === auth.currentUser.uid ||
-                      game.player2?.id === auth.currentUser.uid) &&
-                    game.status === "active" &&
-                    Date.now() - game.startTime < 60000 // Created in the last minute
-                  );
-                })
-                .sort((a, b) => b[1].startTime - a[1].startTime)[0];
-
-              if (latestGame) {
-                const [gameId, _] = latestGame;
-                router.push(`/game?gameId=${gameId}`);
-              }
-
-              // Remove this listener
-              matchListener();
-            }
-          }
-        );
+      if (result.status === "matched") {
+        // Doğrudan eşleşme bulundu, oyun sayfasına yönlendir
+        router.push(`/game?gameId=${result.gameId}`);
+        setMatchmakingLoading(false);
+      } else if (result.status === "waiting") {
+        // Eşleşme bekleniyor, durum bilgisini güncelle
+        setWaitingForMatch(true);
+        setMatchmakingLoading(false);
       }
     } catch (error) {
       console.error("Join game error:", error);
-      setLoading(false);
+      setMatchmakingLoading(false);
+      setWaitingForMatch(false);
+      setMatchmakingType(null);
       Alert.alert("Hata", "Oyuna katılırken bir hata oluştu: " + error.message);
     }
   };
 
+  // Kalan süreyi formatlı şekilde göster
   const renderTimeLeft = (lastMoveTime, gameType) => {
     if (!lastMoveTime) return "";
 
@@ -338,84 +281,36 @@ export default function HomeScreen() {
     }
   };
 
-  // Create a new game
-  const createGame = async (gameType, opponentId, opponentUsername) => {
-    try {
-      // Generate game components
-      const letterPool = generateLetterPool();
-      const { player1Rack, player2Rack, remainingPool } =
-        distributeLetters(letterPool);
-
-      // Create board with special cells
-      const emptyBoard = initializeBoard();
-      const mines = generateMines();
-      const rewards = generateRewards();
-      const boardWithSpecials = placeSpecialsOnBoard(
-        emptyBoard,
-        mines,
-        rewards
-      );
-
-      // Randomly select first player
-      const firstPlayer =
-        Math.random() < 0.5 ? auth.currentUser.uid : opponentId;
-
-      // Create new game in Firebase
-      const newGameRef = push(ref(database, "games"));
-
-      // Game data
-      const gameData = {
-        player1: {
-          id: auth.currentUser.uid,
-          username: user.username,
-          score: 0,
-        },
-        player2: {
-          id: opponentId,
-          username: opponentUsername,
-          score: 0,
-        },
-        board: boardWithSpecials,
-        letterPool: remainingPool,
-        player1Rack,
-        player2Rack,
-        player1Rewards: [],
-        player2Rewards: [],
-        turnPlayer: firstPlayer,
-        startTime: Date.now(),
-        lastMoveTime: Date.now(),
-        gameType,
-        status: "active",
-      };
-
-      // Save game to Firebase
-      await set(newGameRef, gameData);
-
-      setLoading(false);
-
-      // Navigate to game screen
-      router.push(`/game?gameId=${newGameRef.key}`);
-    } catch (error) {
-      console.error("Create game error:", error);
-      setLoading(false);
-      throw error;
-    }
-  };
-
-  // Continue an existing game
+  // Mevcut bir oyuna devam et
   const continueGame = (gameId) => {
     router.push(`/game?gameId=${gameId}`);
   };
 
-  // Log out
+  // Çıkış yap
   const handleLogout = async () => {
     try {
+      // Eşleşme bekliyorsa iptal et
+      if (waitingForMatch && matchmakingType) {
+        await cancelMatchmaking(matchmakingType);
+      }
+
       await signOut(auth);
       router.replace("/");
     } catch (error) {
       console.error("Logout error:", error);
       Alert.alert("Hata", "Çıkış yapılırken bir hata oluştu: " + error.message);
     }
+  };
+
+  // Başarı oranını hesapla
+  const calculateSuccessRate = () => {
+    if (!user) return 0;
+
+    const gamesPlayed = user.gamesPlayed || 0;
+    const gamesWon = user.gamesWon || 0;
+
+    if (gamesPlayed === 0) return 0;
+    return Math.round((gamesWon / gamesPlayed) * 100);
   };
 
   if (loading) {
@@ -429,8 +324,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* User Info */}
-
+      {/* Kullanıcı Bilgileri */}
       <View style={styles.userInfo}>
         <View>
           <Text style={styles.username}>
@@ -438,16 +332,13 @@ export default function HomeScreen() {
           </Text>
           <View style={styles.statsContainer}>
             <Text style={styles.statsText}>
-              Başarı: %
-              {user && user.gamesPlayed && user.gamesPlayed > 0
-                ? Math.round(((user.gamesWon || 0) / user.gamesPlayed) * 100)
-                : 0}
+              Başarı: %{calculateSuccessRate()}
             </Text>
             <Text style={styles.statsText}>
-              Oyunlar: {user && user.gamesPlayed ? user.gamesPlayed : 0}
+              Oyunlar: {user?.gamesPlayed || 0}
             </Text>
             <Text style={styles.statsText}>
-              Kazanılan: {user && user.gamesWon ? user.gamesWon : 0}
+              Kazanılan: {user?.gamesWon || 0}
             </Text>
           </View>
         </View>
@@ -456,19 +347,31 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Tabs */}
+      {/* Sekmeler */}
       <View style={styles.tabs}>
         <TouchableOpacity
           style={[styles.tab, activeTab === "newGame" && styles.activeTab]}
           onPress={() => setActiveTab("newGame")}
         >
-          <Text style={styles.tabText}>Yeni Oyun</Text>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "newGame" && styles.activeTabText,
+            ]}
+          >
+            Yeni Oyun
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === "activeGames" && styles.activeTab]}
           onPress={() => setActiveTab("activeGames")}
         >
-          <Text style={styles.tabText}>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "activeGames" && styles.activeTabText,
+            ]}
+          >
             Aktif Oyunlar ({activeGames.length})
           </Text>
         </TouchableOpacity>
@@ -479,13 +382,18 @@ export default function HomeScreen() {
           ]}
           onPress={() => setActiveTab("completedGames")}
         >
-          <Text style={styles.tabText}>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "completedGames" && styles.activeTabText,
+            ]}
+          >
             Biten Oyunlar ({completedGames.length})
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Tab Content */}
+      {/* Sekme İçeriği */}
       {activeTab === "newGame" && (
         <View style={styles.tabContent}>
           <Text style={styles.sectionTitle}>Hızlı Oyun</Text>
@@ -493,12 +401,14 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={styles.gameTypeButton}
               onPress={() => handleJoinGame("2min")}
+              disabled={matchmakingLoading || waitingForMatch}
             >
               <Text style={styles.buttonText}>2 Dakika</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.gameTypeButton}
               onPress={() => handleJoinGame("5min")}
+              disabled={matchmakingLoading || waitingForMatch}
             >
               <Text style={styles.buttonText}>5 Dakika</Text>
             </TouchableOpacity>
@@ -509,16 +419,49 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={styles.gameTypeButton}
               onPress={() => handleJoinGame("12hour")}
+              disabled={matchmakingLoading || waitingForMatch}
             >
               <Text style={styles.buttonText}>12 Saat</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.gameTypeButton}
               onPress={() => handleJoinGame("24hour")}
+              disabled={matchmakingLoading || waitingForMatch}
             >
               <Text style={styles.buttonText}>24 Saat</Text>
             </TouchableOpacity>
           </View>
+
+          {matchmakingLoading && (
+            <View style={styles.matchmakingLoading}>
+              <ActivityIndicator size="small" color="#2e6da4" />
+              <Text style={styles.matchmakingText}>Eşleşme bekleniyor...</Text>
+            </View>
+          )}
+
+          {waitingForMatch && (
+            <View style={styles.matchmakingLoading}>
+              <Text style={styles.matchmakingText}>
+                {matchmakingType === "2min"
+                  ? "2 Dakikalık oyun için eşleşme bekleniyor..."
+                  : matchmakingType === "5min"
+                  ? "5 Dakikalık oyun için eşleşme bekleniyor..."
+                  : matchmakingType === "12hour"
+                  ? "12 Saatlik oyun için eşleşme bekleniyor..."
+                  : "24 Saatlik oyun için eşleşme bekleniyor..."}
+              </Text>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  cancelMatchmaking(matchmakingType);
+                  setWaitingForMatch(false);
+                  setMatchmakingType(null);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>İptal Et</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
 
@@ -573,6 +516,8 @@ export default function HomeScreen() {
               </Text>
             </View>
           }
+          onRefresh={loadActiveGames}
+          refreshing={loading}
         />
       )}
 
@@ -620,6 +565,8 @@ export default function HomeScreen() {
               <Text>Henüz tamamlanmış oyununuz bulunmamaktadır.</Text>
             </View>
           }
+          onRefresh={loadCompletedGames}
+          refreshing={loading}
         />
       )}
     </SafeAreaView>
@@ -684,6 +631,9 @@ const styles = StyleSheet.create({
   tabText: {
     fontWeight: "500",
     color: "#333",
+  },
+  activeTabText: {
+    color: "#fff",
   },
   tabContent: {
     flex: 1,
@@ -806,5 +756,31 @@ const styles = StyleSheet.create({
     color: "#e74c3c", // Kırmızı
     fontWeight: "bold",
     marginLeft: 10,
+  },
+  matchmakingLoading: {
+    alignItems: "center",
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  matchmakingText: {
+    marginTop: 10,
+    fontStyle: "italic",
+    color: "#666",
+  },
+  cancelButton: {
+    marginTop: 15,
+    backgroundColor: "#f44336",
+    padding: 10,
+    borderRadius: 5,
+    width: 150,
+    alignItems: "center",
+  },
+  cancelButtonText: {
+    color: "white",
+    fontWeight: "bold",
   },
 });

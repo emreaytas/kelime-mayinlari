@@ -12,9 +12,9 @@ import {
   SafeAreaView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { auth } from "../firebase/config";
-import GameBoard from "../components/GameBoard";
-import LetterRack from "../components/LetterRack";
+import { auth } from "../src/firebase/config";
+import GameBoard from "../src/components/GameBoard";
+import LetterRack from "../src/components/LetterRack";
 import {
   getGameData,
   listenToGameChanges,
@@ -22,8 +22,8 @@ import {
   passTurn,
   surrender,
   useReward,
-} from "../services/gameService";
-import { letterValues, validateWord } from "../utils/GameBoardUtils";
+} from "../src/services/gameService";
+import { letterValues, validateWord } from "../src/utils/GameBoardUtils";
 
 export default function GamePlayScreen() {
   const { gameId } = useLocalSearchParams();

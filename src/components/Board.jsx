@@ -36,7 +36,6 @@ export default function Board({ selectedCells = [], onCellPress }) {
       [9, 5],
       [9, 9],
       [9, 14],
-      [12, 6],
       [13, 6],
       [13, 8],
       [14, 5],

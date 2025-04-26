@@ -24,8 +24,13 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  console.log("LoginScreen export default function LoginScreen çalıştı");
   // Check if user is already logged in
   useEffect(() => {
+    console.log(
+      "LoginScreen export default function LoginScreen UseEffect çalıştı"
+    );
+
     const checkAuth = () => {
       if (auth.currentUser) {
         router.replace("/home");
@@ -106,6 +111,7 @@ export default function LoginScreen() {
     }
   };
 
+  console.log("LoginScreen dönüyor.");
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView

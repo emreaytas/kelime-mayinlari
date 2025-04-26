@@ -16,6 +16,7 @@ export default function Index() {
     // Listen for auth state to change
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
+      console.log("index.js: " + user + " bilgisi var.");
       setInitializing(false);
     });
 

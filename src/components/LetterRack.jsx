@@ -8,6 +8,7 @@ export default function LetterRack({
   selectedIndices = [],
   onTilePress,
 }) {
+  // Veri kontrolü
   if (!letters || !Array.isArray(letters)) {
     console.warn("Invalid letters data:", letters);
     return <View style={styles.rack} />;
@@ -17,7 +18,7 @@ export default function LetterRack({
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View style={styles.rack}>
         {letters.map((letterObj, index) => {
-          // Handle both object and string formats
+          // Hem nesne hem de string formatlarını destekle
           const letter =
             typeof letterObj === "object" && letterObj !== null
               ? letterObj.letter

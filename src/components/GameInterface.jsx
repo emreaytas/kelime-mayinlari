@@ -1,4 +1,4 @@
-// src/components/GameInterface.jsx - Fixed version with extra data safety checks
+// src/components/GameInterface.jsx
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -16,32 +16,56 @@ import { auth } from "../firebase/config";
 import GameBoard from "./GameBoard";
 import LetterRack from "./LetterRack";
 import {
+  getGameData,
+  listenToGameChanges,
   placeWord,
   passTurn,
   surrender,
   useReward,
-  getGameData,
-  listenToGameChanges,
 } from "../services/gameService";
+import { validateWord } from "../utils/GameBoardUtils";
 
 export default function GameInterface({ gameId }) {
-  const [game, setGame] = useState(null);
+  const [timerColor, setTimerColor] = useState("#333"); // Normal renk için varsayılan değer
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedRackIndices, setSelectedRackIndices] = useState([]);
+  const [game, setGame] = useState(null);
   const [selectedBoardCells, setSelectedBoardCells] = useState([]);
+  const [selectedRackIndices, setSelectedRackIndices] = useState([]);
   const [currentWord, setCurrentWord] = useState("");
   const [wordValid, setWordValid] = useState(false);
   const [earnedPoints, setEarnedPoints] = useState(0);
-  const [activeReward, setActiveReward] = useState(null);
+  const [placementDirection, setPlacementDirection] = useState(null); // horizontal veya vertical
+  const [selectedReward, setSelectedReward] = useState(null);
   const [specialPopup, setSpecialPopup] = useState(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
   const [remainingTime, setRemainingTime] = useState(null);
-  const [timerColor, setTimerColor] = useState("#333"); // Normal renk
 
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
 
+  // Kullanıcı ve oyun verilerini yükle
+  useEffect(() => {
+    // Oyun ID'si var mı kontrol et
+    if (!gameId) {
+      Alert.alert("Hata", "Oyun ID'si bulunamadı", [
+        { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
+      ]);
+      return;
+    }
+
+    // Oyun verilerini dinle
+    setupGameListener();
+
+    // Cleanup
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, [gameId]);
+
+  // Süre göstergesi için
+  // Süre göstergesi için useEffect fonksiyonunda
   useEffect(() => {
     if (!game || !isUserTurn()) return;
 
@@ -120,191 +144,135 @@ export default function GameInterface({ gameId }) {
     };
   }, [game, isUserTurn]);
 
-  useEffect(() => {
-    // Oyun verilerini dinle
-    const setupGameListener = () => {
-      try {
-        unsubscribeRef.current = listenToGameChanges(
-          gameId,
-          (gameData, error) => {
-            setLoading(false);
+  // Oyun değişikliklerini dinleme
+  const setupGameListener = () => {
+    unsubscribeRef.current = listenToGameChanges(gameId, (gameData, error) => {
+      setLoading(false);
 
-            if (error) {
-              console.error("Game data error:", error);
-              setError("Oyun verileri yüklenirken bir sorun oluştu");
-              return;
-            }
-
-            if (!gameData) {
-              console.error("No game data received");
-              setError("Oyun verileri bulunamadı");
-              return;
-            }
-
-            // Gelen verileri doğrula
-            if (!validateGameData(gameData)) {
-              console.error("Invalid game data structure:", gameData);
-              setError("Oyun verileri geçersiz format");
-              // Hatalı veriyi yine de depola (debug için)
-              setGame(gameData);
-              return;
-            }
-
-            // Geçerli oyun verileri
-            setGame(gameData);
-            setError(null);
-
-            // Oyun yeni başladıysa ve başlangıç kelimesi varsa bildiri göster
-            if (gameData.initialWord && !gameData._initialWordShown) {
-              Alert.alert(
-                "Oyun Başladı",
-                `Başlangıç kelimesi tahtaya yerleştirildi: ${gameData.initialWord}`,
-                [{ text: "Tamam" }]
-              );
-              // Tekrar göstermeyi önle
-              setGame({ ...gameData, _initialWordShown: true });
-            }
-
-            // Oyun tamamlandıysa ve daha önce popup gösterilmediyse
-            if (gameData.status === "completed" && !gameData._completedShown) {
-              showGameResultPopup(gameData);
-              // Tekrar göstermeyi önle
-              setGame({ ...gameData, _completedShown: true });
-            }
-          }
-        );
-      } catch (err) {
-        console.error("Error setting up game listener:", err);
-        setError("Oyun bağlantısı kurulamadı");
-        setLoading(false);
+      if (error) {
+        Alert.alert("Hata", "Oyun verileri yüklenirken bir sorun oluştu");
+        return;
       }
-    };
 
-    setupGameListener();
-
-    // Temizleme
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
+      if (!gameData) {
+        Alert.alert("Bilgi", "Oyun bulunamadı", [
+          { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
+        ]);
+        return;
       }
-    };
-  }, [gameId]);
 
-  // Kullanıcı ve oyun verilerini yükle
-  useEffect(() => {
-    // Oyun ID'si var mı kontrol et
-    if (!gameId) {
-      Alert.alert("Hata", "Oyun ID'si bulunamadı", [
-        { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
-      ]);
+      setGame(gameData);
+
+      // Oyun tamamlandıysa ve daha önce popup gösterilmediyse
+      if (gameData.status === "completed" && !gameData._completedShown) {
+        showGameResultPopup(gameData);
+        // Tekrar göstermeyi önle
+        setGame({ ...gameData, _completedShown: true });
+      }
+    });
+  };
+
+  // GameInterface.jsx içine eklenecek fonksiyon
+  const confirmMove = async () => {
+    if (!isUserTurn()) {
+      Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
       return;
     }
 
-    // Oyun verilerini dinle
-    const setupGameListener = () => {
-      try {
-        unsubscribeRef.current = listenToGameChanges(
-          gameId,
-          (gameData, error) => {
-            setLoading(false);
-
-            if (error) {
-              console.error("Game data error:", error);
-              setError("Oyun verileri yüklenirken bir sorun oluştu");
-              return;
-            }
-
-            if (!gameData) {
-              console.error("No game data received");
-              setError("Oyun verileri bulunamadı");
-              return;
-            }
-
-            // Gelen verileri doğrula
-            if (!validateGameData(gameData)) {
-              console.error("Invalid game data structure:", gameData);
-              setError("Oyun verileri geçersiz format");
-              // Hatalı veriyi yine de depola (debug için)
-              setGame(gameData);
-              return;
-            }
-
-            // Geçerli oyun verileri
-            setGame(gameData);
-            setError(null);
-
-            // Oyun tamamlandıysa ve daha önce popup gösterilmediyse
-            if (gameData.status === "completed" && !gameData._completedShown) {
-              showGameResultPopup(gameData);
-              // Tekrar göstermeyi önle
-              setGame({ ...gameData, _completedShown: true });
-            }
-          }
-        );
-      } catch (err) {
-        console.error("Error setting up game listener:", err);
-        setError("Oyun bağlantısı kurulamadı");
-        setLoading(false);
-      }
-    };
-
-    setupGameListener();
-
-    // Temizleme
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-      }
-    };
-  }, [gameId]);
-
-  // Oyun verilerini doğrula
-  const validateGameData = (data) => {
-    if (!data) return false;
-
-    // Minimum gerekli alanlar
-    if (!data.board || !Array.isArray(data.board)) {
-      console.warn("Game data missing valid board array");
-      return false;
+    if (!wordValid) {
+      Alert.alert("Uyarı", "Geçerli bir kelime oluşturun!");
+      return;
     }
 
-    // Oyun durumu ve oyuncular
-    if (!data.status || !data.player1 || !data.player2) {
-      console.warn("Game data missing status or players");
-      return false;
-    }
+    try {
+      setConfirmingAction(true);
 
-    return true;
+      // Kelimeyi yerleştir
+      const result = await placeWord(gameId, selectedCells);
+
+      // Özel etkileri göster
+      if (result.effects) {
+        if (result.effects.pointDivision) {
+          setSpecialPopup({
+            title: "Mayın Etkisi",
+            message: "Puan Bölünmesi: Puanınızın sadece %30'unu aldınız!",
+          });
+        } else if (result.effects.pointTransfer) {
+          setSpecialPopup({
+            title: "Mayın Etkisi",
+            message: "Puan Transferi: Puanlarınız rakibinize gitti!",
+          });
+        } else if (result.effects.letterLoss) {
+          setSpecialPopup({
+            title: "Mayın Etkisi",
+            message: "Harf Kaybı: Tüm harfleriniz yenileriyle değiştirildi!",
+          });
+        } else if (result.effects.moveBlockade) {
+          setSpecialPopup({
+            title: "Mayın Etkisi",
+            message:
+              "Ekstra Hamle Engeli: Harf ve kelime çarpanları iptal edildi!",
+          });
+        } else if (result.effects.wordCancellation) {
+          setSpecialPopup({
+            title: "Mayın Etkisi",
+            message: "Kelime İptali: Bu kelimeden hiç puan alamadınız!",
+          });
+        }
+      }
+
+      // Ödülleri göster
+      if (result.rewards && result.rewards.length > 0) {
+        const rewardMessages = {
+          BolgeYasagi:
+            "Bölge Yasağı: Rakibiniz sınırlı bir alanda oynayabilecek!",
+          HarfYasagi: "Harf Yasağı: Rakibinizin bazı harfleri dondurulacak!",
+          EkstraHamleJokeri:
+            "Ekstra Hamle Jokeri: Bir sonraki turda ekstra hamle yapabilirsiniz!",
+        };
+
+        const rewardMessage = result.rewards
+          .map((r) => rewardMessages[r] || r)
+          .join("\n");
+
+        setSpecialPopup({
+          title: "Ödül Kazandınız!",
+          message: rewardMessage,
+        });
+      }
+
+      // Seçimleri sıfırla
+      resetSelections();
+    } catch (error) {
+      Alert.alert("Hata", error.message || "Hamle yapılırken bir sorun oluştu");
+    } finally {
+      setConfirmingAction(false);
+    }
   };
-  // Oyun süresini formatlama için yardımcı fonksiyon
-  const formatGameDuration = (startTime, endTime) => {
-    if (!startTime || !endTime) return "Bilinmiyor";
 
-    const durationMs = endTime - startTime;
-    const seconds = Math.floor(durationMs / 1000);
-
-    if (seconds < 60) {
-      return `${seconds} saniye`;
+  const handleRackTileSelect = (index) => {
+    if (!isUserTurn()) {
+      Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
+      return;
     }
 
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) {
-      return `${minutes} dakika ${seconds % 60} saniye`;
+    const newSelectedIndices = [...selectedRackIndices];
+
+    // Harf zaten seçili mi?
+    const indexPos = newSelectedIndices.indexOf(index);
+    if (indexPos !== -1) {
+      // Seçimi kaldır
+      newSelectedIndices.splice(indexPos, 1);
+    } else {
+      // Yeni seçim ekle
+      newSelectedIndices.push(index);
     }
 
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) {
-      return `${hours} saat ${minutes % 60} dakika`;
-    }
-
-    const days = Math.floor(hours / 24);
-    return `${days} gün ${hours % 24} saat`;
+    setSelectedRackIndices(newSelectedIndices);
   };
   // Oyun sonucunu göster
   const showGameResultPopup = (gameData) => {
-    if (!auth.currentUser) return;
-
-    const isPlayer1 = auth.currentUser.uid === gameData.player1.id;
+    const isPlayer1 = auth.currentUser?.uid === gameData.player1.id;
     const player1Won = gameData.player1.score > gameData.player2.score;
     const player2Won = gameData.player2.score > gameData.player1.score;
     const isDraw = gameData.player1.score === gameData.player2.score;
@@ -327,103 +295,208 @@ export default function GameInterface({ gameId }) {
     ]);
   };
 
-  // Kullanıcının harflerini al
+  // Kullanıcının harflerini ve sırasını al
   const getUserRack = () => {
     if (!game || !auth.currentUser) return [];
 
-    const isPlayer1 = auth.currentUser.uid === game.player1?.id;
-    return isPlayer1 ? game.player1Rack || [] : game.player2Rack || [];
+    const isPlayer1 = auth.currentUser.uid === game.player1.id;
+    return isPlayer1 ? game.player1Rack : game.player2Rack;
   };
 
   // Kullanıcının sırası mı?
   const isUserTurn = () => {
-    if (!game || !auth.currentUser) return false;
-    return game.turnPlayer === auth.currentUser.uid;
+    return game && auth.currentUser && game.turnPlayer === auth.currentUser.uid;
   };
 
   // Kullanıcının ödüllerini al
   const getUserRewards = () => {
     if (!game || !auth.currentUser) return [];
 
-    const isPlayer1 = auth.currentUser.uid === game.player1?.id;
+    const isPlayer1 = auth.currentUser.uid === game.player1.id;
     return isPlayer1 ? game.player1Rewards || [] : game.player2Rewards || [];
   };
 
   // Hücre seçimi
-  const handleBoardCellSelect = (row, col) => {
+  const handleCellPress = (row, col) => {
     if (!isUserTurn()) {
       Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
       return;
     }
 
-    // Harf seçili değilse
+    // Önce bir harf seçilmiş olmalı
     if (selectedRackIndices.length === 0) {
       Alert.alert("Uyarı", "Önce rafınızdan bir harf seçin!");
       return;
     }
 
-    // Tahta geçerli mi kontrol et
-    if (
-      !game?.board ||
-      !Array.isArray(game.board) ||
-      !game.board[row] ||
-      !game.board[row][col]
-    ) {
-      Alert.alert("Uyarı", "Tahta verisi geçersiz! Lütfen sayfayı yenileyin.");
-      return;
-    }
-
     // Hücre boş mu kontrol et
-    if (game.board[row][col]?.letter) {
+    if (game.board[row][col].letter) {
       Alert.alert("Uyarı", "Bu hücre zaten dolu!");
       return;
     }
 
-    // Raf indeksini al (ilk seçili harf)
+    // İlk yerleştirme mi kontrol et
+    const isFirstMove = !game.board.some((boardRow) =>
+      boardRow.some((cell) => cell.letter)
+    );
+
+    if (isFirstMove && (row !== 7 || col !== 7)) {
+      Alert.alert("Uyarı", "İlk harf ortadaki yıldıza yerleştirilmelidir!");
+      return;
+    }
+
+    // İlk hamle değilse, mevcut bir harfe bitişik mi kontrol et
+    if (!isFirstMove && selectedCells.length === 0) {
+      // Mevcut harflere bitişik mi?
+      const isAdjacent = checkIfAdjacentToExistingLetter(row, col);
+      if (!isAdjacent) {
+        Alert.alert("Uyarı", "Harf mevcut bir kelimeye bitişik olmalıdır!");
+        return;
+      }
+    }
+
+    // Seçilen raf indeksi
     const rackIndex = selectedRackIndices[0];
 
-    // Seçili hücreleri güncelle - tek bir hücre
-    setSelectedBoardCells([{ row, col, rackIndex }]);
+    // Kullanıcının rafından harf bilgisini al
+    const userRack = getUserRack();
+    const letterObj = userRack[rackIndex];
+    const letter = typeof letterObj === "object" ? letterObj.letter : letterObj;
+
+    // Yeni seçili hücreleri güncelle
+    const newSelectedCells = [...selectedCells, { row, col, rackIndex }];
+    setSelectedCells(newSelectedCells);
+
+    // Geçici olarak harf yerleştirmeyi göster (sadece görsel olarak, henüz veritabanına kaydedilmez) sonra bunu da eklememiz lazım ama buraı önemli.
+    const boardCopy = JSON.parse(JSON.stringify(game.board));
+    boardCopy[row][col] = {
+      ...boardCopy[row][col],
+      letter: letter, // Harfi yerleştir
+      isTemporary: true, // Bu, henüz kaydedilmemiş, geçici bir yerleştirme olduğunu belirtir
+    };
+
+    // Burda BoardCell bileşenine boardCopy'yi gönderebilirsiniz ama gereksiz render'ı önlemek için
+    // seçili hücreleri takip etmek daha verimli olacaktır
 
     // Seçilen harfi kaldır
-    setSelectedRackIndices([]);
+    setSelectedRackIndices(selectedRackIndices.slice(1));
 
-    // Kelimeyi ve puanı hesapla
-    calculateWordAndPoints(row, col, rackIndex);
+    // Yerleştirme yönünü belirle (2 veya daha fazla harf olduğunda)
+    if (newSelectedCells.length >= 2) {
+      determineDirection(newSelectedCells);
+    }
+
+    // Oluşan kelimeyi kontrol et
+    checkWord(newSelectedCells);
+  };
+
+  // Yerleştirme yönünü belirle
+  const determineDirection = (cells) => {
+    if (cells.length < 2) {
+      setPlacementDirection(null);
+      return;
+    }
+
+    const firstCell = cells[0];
+    const lastCell = cells[cells.length - 1];
+
+    if (firstCell.row === lastCell.row) {
+      setPlacementDirection("horizontal");
+    } else if (firstCell.col === lastCell.col) {
+      setPlacementDirection("vertical");
+    } else {
+      // Çapraz yerleştirme geçersiz
+      Alert.alert(
+        "Uyarı",
+        "Harfler yatay veya dikey olarak yerleştirilmelidir!"
+      );
+
+      // Son eklenen hücreyi kaldır
+      setSelectedCells(cells.slice(0, -1));
+      setSelectedRackIndices([
+        ...selectedRackIndices,
+        cells[cells.length - 1].rackIndex,
+      ]);
+    }
   };
 
   // Raftaki harf seçimi
-  const handleRackTileSelect = (index) => {
+
+  const handleRackTilePress = (index) => {
     if (!isUserTurn()) {
       Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
       return;
     }
 
-    // Önceki seçimi temizle
-    setSelectedBoardCells([]);
+    const newSelectedIndices = [...selectedRackIndices];
 
-    // Yeni seçim - her zaman tek harf
-    setSelectedRackIndices([index]);
+    // Harf zaten seçili mi?
+    const indexPos = newSelectedIndices.indexOf(index);
+    if (indexPos !== -1) {
+      // Seçimi kaldır
+      newSelectedIndices.splice(indexPos, 1);
+    } else {
+      // Yeni seçim ekle
+      newSelectedIndices.push(index);
+    }
+
+    setSelectedRackIndices(newSelectedIndices);
   };
 
-  // Kelimeyi ve puanı hesapla
-  const calculateWordAndPoints = (row, col, rackIndex) => {
-    // Güvenlik kontrolleri
-    try {
-      // Basit geçici hesaplama
-      setCurrentWord("Test");
-      setWordValid(true);
-      setEarnedPoints(5);
-    } catch (err) {
-      console.error("Error calculating word and points:", err);
+  // Oluşturulan kelimeyi kontrol et
+  const checkWord = (cells) => {
+    if (cells.length < 2) {
       setCurrentWord("");
       setWordValid(false);
+      setEarnedPoints(0);
+      return;
+    }
+
+    // Hücreleri sırala
+    const sortedCells = [...cells].sort((a, b) => {
+      if (placementDirection === "horizontal") {
+        return a.col - b.col;
+      }
+      return a.row - b.row;
+    });
+
+    // Kelimeyi oluştur
+    const rack = getUserRack();
+    let word = "";
+
+    sortedCells.forEach((cell) => {
+      const { rackIndex } = cell;
+      const letterObj = rack[rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+
+      word += letter === "JOKER" ? "*" : letter;
+    });
+
+    setCurrentWord(word);
+
+    // Kelimenin geçerliliğini kontrol et
+    const isValid = validateWord(word);
+    setWordValid(isValid);
+
+    // Puanları hesapla
+    if (isValid) {
+      const points = calculateWordPoints(sortedCells);
+      setEarnedPoints(points);
+    } else {
       setEarnedPoints(0);
     }
   };
 
-  // Hamleyi onayla
-  const confirmMove = async () => {
+  // Kelime puanlarını hesapla
+  const calculateWordPoints = (cells) => {
+    // Örnek bir puanlama fonksiyonu
+    // Gerçek puanlama mantığınızı buraya ekleyebilirsiniz
+    return cells.length * 5; // Her harf için 5 puan
+  };
+
+  // Kelimeyi onayla
+  const confirmWord = async () => {
     if (!isUserTurn()) {
       Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
       return;
@@ -434,24 +507,76 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    if (selectedBoardCells.length === 0) {
-      Alert.alert("Uyarı", "Tahtaya yerleştirilecek harf seçilmedi!");
-      return;
-    }
-
     try {
       setConfirmingAction(true);
 
-      // Kelimeyi yerleştir - Tek harf yerleştiriyoruz
-      const result = await placeWord(gameId, selectedBoardCells);
+      // Kelimeyi yerleştir
+      const result = await placeWord(gameId, selectedCells);
 
-      // Başarılı hamle
+      // Özel etkileri göster
+      if (result.effects) {
+        showEffectsPopup(result.effects);
+      }
+
+      // Ödülleri göster
+      if (result.rewards && result.rewards.length > 0) {
+        showRewardsPopup(result.rewards);
+      }
+
+      // Seçimleri sıfırla
       resetSelections();
     } catch (error) {
       Alert.alert("Hata", error.message || "Hamle yapılırken bir sorun oluştu");
     } finally {
       setConfirmingAction(false);
     }
+  };
+
+  // Etkileri göster
+  const showEffectsPopup = (effects) => {
+    if (effects.pointDivision) {
+      setSpecialPopup({
+        title: "Mayın Etkisi",
+        message: "Puan Bölünmesi: Puanınızın sadece %30'unu aldınız!",
+      });
+    } else if (effects.pointTransfer) {
+      setSpecialPopup({
+        title: "Mayın Etkisi",
+        message: "Puan Transferi: Puanlarınız rakibinize gitti!",
+      });
+    } else if (effects.letterLoss) {
+      setSpecialPopup({
+        title: "Mayın Etkisi",
+        message: "Harf Kaybı: Tüm harfleriniz yenileriyle değiştirildi!",
+      });
+    } else if (effects.moveBlockade) {
+      setSpecialPopup({
+        title: "Mayın Etkisi",
+        message: "Ekstra Hamle Engeli: Harf ve kelime çarpanları iptal edildi!",
+      });
+    } else if (effects.wordCancellation) {
+      setSpecialPopup({
+        title: "Mayın Etkisi",
+        message: "Kelime İptali: Bu kelimeden hiç puan alamadınız!",
+      });
+    }
+  };
+
+  // Ödülleri göster
+  const showRewardsPopup = (rewards) => {
+    const rewardMessages = {
+      BolgeYasagi: "Bölge Yasağı: Rakibiniz sınırlı bir alanda oynayabilecek!",
+      HarfYasagi: "Harf Yasağı: Rakibinizin bazı harfleri dondurulacak!",
+      EkstraHamleJokeri:
+        "Ekstra Hamle Jokeri: Bir sonraki turda ekstra hamle yapabilirsiniz!",
+    };
+
+    const rewardMessage = rewards.map((r) => rewardMessages[r] || r).join("\n");
+
+    setSpecialPopup({
+      title: "Ödül Kazandınız!",
+      message: rewardMessage,
+    });
   };
 
   // Hamleyi iptal et
@@ -461,12 +586,12 @@ export default function GameInterface({ gameId }) {
 
   // Tüm seçimleri sıfırla
   const resetSelections = () => {
-    setSelectedBoardCells([]);
-    setSelectedRackIndices([]);
+    setSelectedBoardCells([]); // setSelectedCells yerine setSelectedBoardCells    setSelectedRackIndices([]);
+    setPlacementDirection(null);
     setCurrentWord("");
     setWordValid(false);
     setEarnedPoints(0);
-    setActiveReward(null);
+    setSelectedReward(null);
   };
 
   // Pas geç
@@ -560,7 +685,7 @@ export default function GameInterface({ gameId }) {
             rewardMessages[rewardType] || `${rewardType} etkinleştirildi!`,
         });
 
-        setActiveReward(null);
+        setSelectedReward(null);
       }
     } catch (error) {
       Alert.alert(
@@ -576,21 +701,6 @@ export default function GameInterface({ gameId }) {
   const closePopup = () => {
     setSpecialPopup(null);
   };
-
-  // Hata durumunda
-  if (error) {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity
-          style={styles.button}
-          onPress={() => router.replace("/home")}
-        >
-          <Text style={styles.buttonText}>Ana Sayfaya Dön</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
 
   // Yükleniyor
   if (loading) {
@@ -743,9 +853,9 @@ export default function GameInterface({ gameId }) {
       <ScrollView contentContainerStyle={styles.boardContainer}>
         <GameBoard
           board={game.board}
-          selectedCells={selectedBoardCells}
-          onCellPress={handleBoardCellSelect}
-          showSpecials={false} // Debug modunda true yapılabilir
+          selectedCells={selectedBoardCells} // selectedCells yerine selectedBoardCells
+          onCellPress={handleCellPress}
+          showSpecials={false}
         />
       </ScrollView>
 
@@ -790,7 +900,7 @@ export default function GameInterface({ gameId }) {
         <LetterRack
           letters={userRack}
           selectedIndices={selectedRackIndices}
-          onTilePress={handleRackTileSelect}
+          onTilePress={handleRackTileSelect} // Fonksiyon adını buraya uygun hale getirin
         />
       </View>
 
@@ -922,11 +1032,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-  errorText: {
-    color: "red",
-    textAlign: "center",
-    marginBottom: 20,
-    fontSize: 16,
+  button: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 5,
+    alignItems: "center",
+    marginHorizontal: 2,
+  },
+  buttonText: {
+    color: "white",
+    fontWeight: "bold",
   },
   topInfoContainer: {
     flexDirection: "row",
@@ -1028,13 +1143,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  button: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 5,
-    alignItems: "center",
-    marginHorizontal: 2,
-  },
   dangerButton: {
     backgroundColor: "#D32F2F",
   },
@@ -1050,10 +1158,6 @@ const styles = StyleSheet.create({
   disabledButton: {
     backgroundColor: "#cccccc",
   },
-  buttonText: {
-    color: "white",
-    fontWeight: "bold",
-  },
   statusContainer: {
     padding: 10,
     alignItems: "center",
@@ -1061,6 +1165,12 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontStyle: "italic",
+  },
+  timerText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginTop: 5,
+    color: "#e74c3c",
   },
   modalOverlay: {
     flex: 1,
@@ -1123,6 +1233,18 @@ const styles = StyleSheet.create({
     width: "100%",
     marginBottom: 20,
   },
+  playerScore: {
+    alignItems: "center",
+    padding: 15,
+    minWidth: 120,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
   winner: {
     color: "green",
     fontWeight: "bold",
@@ -1144,34 +1266,5 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: "center",
     width: "100%",
-  },
-  timerText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginTop: 5,
-  },
-  gameTypeText: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 3,
-  },
-  statsContainer: {
-    backgroundColor: "#f9f9f9",
-    padding: 15,
-    borderRadius: 8,
-    marginVertical: 15,
-    width: "100%",
-    alignItems: "flex-start",
-  },
-  statsTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 8,
-    color: "#2e6da4",
-  },
-  statsText: {
-    fontSize: 14,
-    marginBottom: 5,
-    color: "#555",
   },
 });

@@ -13,6 +13,9 @@ export const createUser = async (userId, userData) => {
       totalGames: 0,
       winsCount: 0,
     });
+    console.log(
+      "userService.js : " + username + " " + email + " oluşturuldu. "
+    );
     return true;
   } catch (error) {
     console.error("User creation error: ", error);
@@ -24,6 +27,7 @@ export const createUser = async (userId, userData) => {
 export const getUserProfile = async (userId) => {
   try {
     const snapshot = await usersRef.child(userId).once("value");
+    console.log("getUserProfile() bilgiler(userService.js): " + snapshot);
     return snapshot.val();
   } catch (error) {
     console.error("Get user error: ", error);

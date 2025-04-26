@@ -8,7 +8,7 @@ import {
   Dimensions,
 } from "react-native";
 
-// Get screen dimensions for responsive cells
+// Ekran boyutlarına göre hücre boyutunu hesapla
 const { width } = Dimensions.get("window");
 const BOARD_SIZE = Math.min(width - 20, 375);
 const CELL_SIZE = BOARD_SIZE / 15;
@@ -19,38 +19,39 @@ export default function BoardCell({
   type,
   special,
   isSelected,
+  isTemporary,
   onPress,
 }) {
-  // Cell color and description based on type
+  // Hücre tipi, renk ve açıklaması
   const getCellStyle = () => {
     switch (type) {
       case "H2":
-        return { backgroundColor: "#87CEFA", description: "H²" }; // Light blue
+        return { backgroundColor: "#87CEFA", description: "H²" }; // Açık mavi (Harf 2x)
       case "H3":
-        return { backgroundColor: "#FF69B4", description: "H³" }; // Pink
+        return { backgroundColor: "#FF69B4", description: "H³" }; // Pembe (Harf 3x)
       case "K2":
-        return { backgroundColor: "#90EE90", description: "K²" }; // Light green
+        return { backgroundColor: "#90EE90", description: "K²" }; // Açık yeşil (Kelime 2x)
       case "K3":
-        return { backgroundColor: "#FFA07A", description: "K³" }; // Light orange
+        return { backgroundColor: "#FFA07A", description: "K³" }; // Açık turuncu (Kelime 3x)
       case "star":
-        return { backgroundColor: "#FFD700", description: "★" }; // Gold
+        return { backgroundColor: "#FFD700", description: "★" }; // Altın (başlangıç yıldızı)
       default:
         return { backgroundColor: "#f5f5f5", description: "" };
     }
   };
 
-  // Special item (mine/reward) icon
+  // Özel öğe (mayın/ödül) simgesi
   const getSpecialIcon = () => {
     if (!special) return "";
 
-    // Mines
+    // Mayınlar
     if (special === "PuanBolunmesi") return "💣";
     if (special === "PuanTransferi") return "💸";
     if (special === "HarfKaybi") return "🧨";
     if (special === "EkstraHamleEngeli") return "🚫";
     if (special === "KelimeIptali") return "❌";
 
-    // Rewards
+    // Ödüller
     if (special === "BolgeYasagi") return "🚧";
     if (special === "HarfYasagi") return "🔒";
     if (special === "EkstraHamleJokeri") return "🎁";
@@ -67,19 +68,25 @@ export default function BoardCell({
         styles.cell,
         { backgroundColor, width: CELL_SIZE, height: CELL_SIZE },
         isSelected && styles.selectedCell,
-        letter && styles.filledCell,
+        letter && !isTemporary && styles.filledCell,
+        letter && isTemporary && styles.temporaryFilledCell,
       ]}
       onPress={onPress}
-      disabled={letter !== null}
+      disabled={letter !== null && !isTemporary} // Kalıcı dolu hücrelere basılamaz
     >
       {letter ? (
+        // Harf içeren hücre
         <View style={styles.letterContainer}>
-          <Text style={styles.letter}>{letter === "JOKER" ? "*" : letter}</Text>
+          <Text style={[styles.letter, isTemporary && styles.temporaryLetter]}>
+            {letter === "JOKER" ? "*" : letter}
+          </Text>
           {points !== null && <Text style={styles.points}>{points}</Text>}
         </View>
       ) : specialIcon ? (
+        // Özel öğe içeren hücre
         <Text style={styles.special}>{specialIcon}</Text>
       ) : (
+        // Boş hücre
         <Text style={styles.description}>{description}</Text>
       )}
     </TouchableOpacity>
@@ -95,10 +102,10 @@ const styles = StyleSheet.create({
   },
   selectedCell: {
     borderWidth: 2,
-    borderColor: "#3f51b5",
+    borderColor: "#3f51b5", // Seçilen hücre kenarı mavi
   },
   filledCell: {
-    backgroundColor: "#FFE4B5", // Filled cell color
+    backgroundColor: "#FFE4B5", // Doldurulmuş hücre rengi
   },
   letterContainer: {
     justifyContent: "center",
@@ -107,11 +114,11 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   letter: {
-    fontSize: CELL_SIZE * 0.5,
+    fontSize: CELL_SIZE * 0.5, // Hücre boyutuna göre harf boyutu
     fontWeight: "bold",
   },
   points: {
-    fontSize: CELL_SIZE * 0.25,
+    fontSize: CELL_SIZE * 0.25, // Hücre boyutuna göre puan boyutu
     position: "absolute",
     bottom: 1,
     right: 1,
@@ -122,5 +129,13 @@ const styles = StyleSheet.create({
   },
   special: {
     fontSize: CELL_SIZE * 0.5,
+  },
+  temporaryFilledCell: {
+    backgroundColor: "#FFFACD", // Daha açık sarı renk (geçici yerleştirme için)
+    borderWidth: 2,
+    borderColor: "#DAA520", // Altın rengi kenar
+  },
+  temporaryLetter: {
+    color: "#B8860B", // Biraz daha koyu renk (geçici harf için)
   },
 });

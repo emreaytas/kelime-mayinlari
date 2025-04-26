@@ -1,0 +1,197 @@
+Kelime Mayınları Projesi Analizi
+"Kelime Mayınları", Kocaeli Üniversitesi Bilgisayar Mühendisliği bölümü için geliştirilen mobil bir kelime oyunu projesidir. Oyun, Scrabble benzeri bir yapıda, iki oyuncunun karşılıklı olarak kelimeler oluşturarak puan topladığı, çeşitli özel hücrelerin ve stratejik unsurların bulunduğu bir oyundur.
+Proje Yapısı ve Teknolojiler
+Proje, React Native ve Expo ile geliştirilmiş ve Firebase servisleri (Authentication, Firestore, Realtime Database) kullanılmıştır. Uygulama yapısı şöyle özetlenebilir:
+
+UI Framework: React Native + Expo
+Navigasyon: expo-router
+Backend: Firebase
+Yapı: Sunucu-istemci mimarisi
+
+Oyun Akışı ve Dosya Yapısı
+1. Giriş ve Kayıt
+İlgili Dosyalar:
+
+src/screens/LoginScreen.jsx: Kullanıcı girişi ekranı
+src/screens/RegisterScreen.jsx: Kullanıcı kaydı ekranı
+src/firebase/config.js: Firebase yapılandırması
+src/services/authService.js: Kimlik doğrulama servisleri
+
+Oyuncu uygulamayı açtığında, önce app/index.js çalışır. Bu dosya, kullanıcının oturum durumunu kontrol eder:
+
+Eğer kullanıcı giriş yapmışsa, doğrudan /home sayfasına yönlendirilir.
+Giriş yapmamışsa, LoginScreen.jsx gösterilir.
+
+Kullanıcı kayıt olmak isterse, "Kayıt Ol" bağlantısına tıklar ve RegisterScreen.jsx açılır.
+2. Ana Sayfa
+İlgili Dosyalar:
+
+src/screens/HomeScreen.jsx: Ana sayfa ekranı
+app/home.js: Ana sayfa router yapısı
+
+Kullanıcı giriş yaptıktan sonra ana sayfaya (HomeScreen.jsx) yönlendirilir. Bu sayfada:
+
+Üst Bilgi: Kullanıcının adı, başarı yüzdesi ve oyun istatistikleri gösterilir.
+Sekme Yapısı:
+
+"Yeni Oyun": Oyun tipi seçimi
+"Aktif Oyunlar": Devam eden oyunlarını gösterir
+"Biten Oyunlar": Tamamlanmış oyunlarını gösterir
+
+
+
+3. Yeni Oyun Başlatma
+İlgili Dosyalar:
+
+src/services/gameService.js: Oyun yönetim servisleri
+src/utils/GameUtils.js: Oyun yardımcı fonksiyonları
+src/utils/GameBoardUtils.js: Oyun tahtası oluşturma
+
+Kullanıcı "Yeni Oyun" sekmesinde bir oyun tipi seçtiğinde:
+
+handleJoinGame fonksiyonu çağrılır.
+Sistem, aynı oyun tipinde bekleyen diğer oyuncuları kontrol eder:
+
+Eğer başka bir oyuncu bekliyorsa, hemen eşleştirilir ve yeni oyun oluşturulur.
+Bekleyen oyuncu yoksa, kullanıcı bekleme listesine eklenir ve eşleşme bekler.
+
+
+
+Oyun oluşturulduğunda:
+
+generateLetterPool ile harf havuzu oluşturulur.
+distributeLetters ile oyunculara başlangıç harfleri dağıtılır.
+initializeBoard ile oyun tahtası başlatılır.
+placeSpecialsOnBoard ile mayın ve ödüller tahtaya yerleştirilir.
+Firebase'de yeni bir oyun kaydı oluşturulur.
+Kullanıcı, /game?gameId=<oluşturulan-oyun-id> sayfasına yönlendirilir.
+
+4. Oyun Ekranı
+İlgili Dosyalar:
+
+src/screens/GameScreen.jsx: Oyun ekranı container'ı
+src/components/GameInterface.jsx: Oyun arayüzü
+src/components/GameBoard.jsx: Oyun tahtası
+src/components/BoardCell.jsx: Tahta hücresi
+src/components/LetterRack.jsx: Oyuncunun harf rafı
+src/components/LetterTile.jsx: Harf gösterimi
+
+Oyun başladığında:
+
+GameScreen.jsx yüklenir ve URL'den gameId parametresini alır.
+Oyun verilerini Firebase'den dinlemeye başlar.
+GameInterface.jsx bileşeni oyunun ana işlevselliğini sağlar:
+
+Tahta görüntüleme
+Harf yönetimi
+Hamle yapma
+Sıra kontrolü
+Zaman sayacı
+
+
+
+Oyuncular sırayla hamle yapar:
+
+Oyuncu rafından bir harf seçer.
+Tahtada bir hücre seçer.
+Kelime oluşturduğunda "Onayla" butonuna basar.
+Hamle Firebase'e gönderilir ve diğer oyuncuya sıra geçer.
+
+5. Aktif Oyunlar ve Tamamlanmış Oyunlar
+İlgili Dosyalar:
+
+src/screens/HomeScreen.jsx: Aktif ve tamamlanmış oyunları listeler
+src/services/gameService.js: Oyun verilerini yönetir
+
+Ana sayfadaki "Aktif Oyunlar" ve "Biten Oyunlar" sekmeleri, kullanıcının oyunlarını gösterir:
+
+Aktif oyunlar Firebase'den gerçek zamanlı olarak alınır.
+Tamamlanmış oyunlar completedGames koleksiyonundan çekilir.
+Kullanıcı aktif bir oyuna tıkladığında, o oyuna devam etmek için oyun ekranına yönlendirilir.
+
+İki Oyuncu Oyuna Girdiğinde Akış
+
+Eşleşme:
+
+İlk oyuncu bir oyun tipi seçer ve bekler.
+İkinci oyuncu aynı oyun tipini seçtiğinde eşleşirler.
+
+
+Oyun Başlatma:
+
+createGame fonksiyonu çağrılır.
+Tahta, harf havuzu, özel hücreler oluşturulur.
+Başlangıç harfleri dağıtılır.
+Rastgele bir oyuncu ilk hamle için seçilir.
+
+
+Oyun Ekranı Yükleme:
+
+Her iki oyuncu da GameScreen.jsx sayfasına yönlendirilir.
+GameInterface.jsx bileşeni her iki oyuncu için de yüklenir.
+Firebase Realtime Database üzerinden oyunun durumu senkronize edilir.
+
+
+Hamle Yapma:
+
+Sırası gelen oyuncu harf seçer ve tahtaya yerleştirir.
+placeWord fonksiyonu ile hamle sunucuya gönderilir.
+Sunucu, hamleyi doğrular, puanları hesaplar ve mayın/ödül etkilerini uygular.
+Diğer oyuncunun ekranı otomatik olarak güncellenir.
+
+
+Oyun Sonu:
+
+Oyun şu durumlarda biter:
+
+Bir oyuncu tüm harflerini kullanır.
+Bir oyuncu teslim olur.
+Her iki oyuncu arka arkaya pas geçer.
+Hamle süresi dolar.
+
+
+Oyun tamamlandığında, sonuç ve puanlar gösterilir.
+Oyun, completedGames koleksiyonuna taşınır.
+Oyuncuların istatistikleri güncellenir.
+
+
+
+Oyundaki Özel Mekanikler
+
+Oyun Tahtası Özellikleri:
+
+H² (Harf 2x): Harf puanını 2 katına çıkarır
+H³ (Harf 3x): Harf puanını 3 katına çıkarır
+K² (Kelime 2x): Kelime puanını 2 katına çıkarır
+K³ (Kelime 3x): Kelime puanını 3 katına çıkarır
+
+
+Mayınlar:
+
+Puan Bölünmesi: Oyuncunun puanlarının sadece %30'unu almasını sağlar
+Puan Transferi: Puanlar rakibe gider
+Harf Kaybı: Oyuncunun elindeki harfler değiştirilir
+Ekstra Hamle Engeli: Harf ve kelime çarpanları iptal edilir
+Kelime İptali: Kelimeden puan alınamaz
+
+
+Ödüller:
+
+Bölge Yasağı: Rakip sınırlı bir alanda oynayabilir
+Harf Yasağı: Rakibin bazı harfleri dondurulur
+Ekstra Hamle Jokeri: İlave hamle hakkı
+
+
+
+Süre Kontrolleri
+Oyunda dört farklı süre tipi vardır:
+
+2 dakika (2min)
+5 dakika (5min)
+12 saat (12hour)
+24 saat (24hour)
+
+Süre, her hamleden sonra baştan başlar. Süre dolduğunda, o andaki oyuncunun sırası iptal edilir ve oyun diğer oyuncunun lehine sonuçlanır.
+Sonuç
+Kelime Mayınları, sunucu-istemci mimarisi kullanan, gerçek zamanlı çoklu oyunculu bir Türkçe kelime oyunudur. Oyun, React Native ile geliştirilmiş mobil arayüz ve Firebase servisleri kullanılan bir backend kombinasyonu ile çalışır. Proje, hem dinamik bir oyun deneyimi sunmakta hem de mobil uygulama geliştirme, gerçek zamanlı veri senkronizasyonu ve kullanıcı kimlik doğrulaması gibi temel uygulama bileşenlerini içermektedir.
+
