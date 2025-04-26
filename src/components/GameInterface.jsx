@@ -760,6 +760,7 @@ export default function GameInterface({ gameId }) {
     } else {
       reasonMessage = "Oyun normal şekilde tamamlandı";
     }
+    console.console.log(game.initialWord + " böyle geldi. ");
 
     return (
       <SafeAreaView style={styles.container}>
@@ -837,6 +838,10 @@ export default function GameInterface({ gameId }) {
             {currentPlayer?.username || "Sen"}
           </Text>
           <Text style={styles.score}>{currentPlayer?.score || 0}</Text>
+        </View>
+
+        <View style={styles.poolInfo}>
+          <Text>Kalan:{game.letterPool?.length || 0}</Text>
         </View>
 
         <View style={styles.playerInfo}>
