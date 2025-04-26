@@ -26,6 +26,8 @@ import {
 import { validateWord } from "../utils/GameBoardUtils";
 
 export default function GameInterface({ gameId }) {
+  const [statusMessage, setStatusMessage] = useState(null);
+  const [showToast, setShowToast] = useState(false);
   const [timerColor, setTimerColor] = useState("#333"); // Normal renk için varsayılan değer
   const [loading, setLoading] = useState(true);
   const [game, setGame] = useState(null);
@@ -39,9 +41,27 @@ export default function GameInterface({ gameId }) {
   const [specialPopup, setSpecialPopup] = useState(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
   const [remainingTime, setRemainingTime] = useState(null);
+  const toastTimer = useRef(null);
 
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) {
+        clearTimeout(toastTimer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    // Oyun tamamlandıysa ve daha önce popup gösterilmediyse
+    if (game && game.status === "completed" && !game._completedShown) {
+      showGameResultPopup(game);
+      // Tekrar göstermeyi önle
+      setGame({ ...game, _completedShown: true });
+    }
+  }, [game]);
 
   // Kullanıcı ve oyun verilerini yükle
   useEffect(() => {
@@ -175,7 +195,7 @@ export default function GameInterface({ gameId }) {
   // GameInterface.jsx içine eklenecek fonksiyon
   const confirmMove = async () => {
     if (!isUserTurn()) {
-      Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
+      showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
     }
 
@@ -280,12 +300,36 @@ export default function GameInterface({ gameId }) {
     let title = "Oyun Bitti";
     let message = "";
 
+    // Oyunun bitme nedenine göre mesaj oluştur
+    if (gameData.reason === "timeout") {
+      const timedOutPlayerName =
+        gameData.timedOutPlayer === auth.currentUser?.uid
+          ? "Sizin"
+          : isPlayer1
+          ? gameData.player2.username
+          : gameData.player1.username;
+
+      message = `${timedOutPlayerName} süreniz doldu! `;
+    } else if (gameData.reason === "surrender") {
+      const surrenderedPlayer =
+        gameData.reason === auth.currentUser?.uid
+          ? "Siz teslim oldunuz"
+          : `${
+              isPlayer1 ? gameData.player2.username : gameData.player1.username
+            } teslim oldu`;
+
+      message = surrenderedPlayer + "! ";
+    } else if (gameData.reason === "pass") {
+      message = "Üst üste pas geçildiği için oyun sona erdi! ";
+    }
+
+    // Kazanan durumu ekle
     if (isDraw) {
-      message = "Oyun berabere bitti!";
+      message += "Oyun berabere bitti!";
     } else if ((isPlayer1 && player1Won) || (!isPlayer1 && player2Won)) {
-      message = "Tebrikler, oyunu kazandınız!";
+      message += "Tebrikler, oyunu kazandınız!";
     } else {
-      message = "Üzgünüm, oyunu kaybettiniz.";
+      message += "Üzgünüm, oyunu kaybettiniz.";
     }
 
     message += `\n\n${gameData.player1.username}: ${gameData.player1.score} puan\n${gameData.player2.username}: ${gameData.player2.score} puan`;
@@ -314,6 +358,23 @@ export default function GameInterface({ gameId }) {
 
     const isPlayer1 = auth.currentUser.uid === game.player1.id;
     return isPlayer1 ? game.player1Rewards || [] : game.player2Rewards || [];
+  };
+
+  const showTemporaryMessage = (message) => {
+    // Önceki mesaj varsa ve timer çalışıyorsa temizle
+    if (toastTimer.current) {
+      clearTimeout(toastTimer.current);
+    }
+
+    // Havuz bilgisini gizle, uyarı mesajını göster
+    setStatusMessage(message);
+    setShowToast(true);
+
+    // 1 saniye sonra uyarı mesajını kaldır ve havuz bilgisini geri getir
+    toastTimer.current = setTimeout(() => {
+      setShowToast(false);
+      toastTimer.current = null;
+    }, 1000);
   };
 
   // Hücre seçimi
@@ -841,7 +902,11 @@ export default function GameInterface({ gameId }) {
         </View>
 
         <View style={styles.poolInfo}>
-          <Text>Kalan:{game.letterPool?.length || 0}</Text>
+          {showToast ? (
+            <Text style={styles.toastMessage}>{statusMessage}</Text>
+          ) : (
+            <Text>Kalan: {game.letterPool?.length || 0}</Text>
+          )}
         </View>
 
         <View style={styles.playerInfo}>

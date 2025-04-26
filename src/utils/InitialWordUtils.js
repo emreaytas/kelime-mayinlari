@@ -62,34 +62,4 @@ export const removeInitialWordFromPool = (letterPool, word) => {
   return newPool;
 };
 
-// Oyun başlangıcında rastgele kelime yerleştirme işlemini yap
-export const setupInitialGame = (game) => {
-  if (!game || !game.board || !game.letterPool) {
-    console.error("Geçersiz oyun verisi");
-    return game;
-  }
-
-  // Oyun kopyasını oluştur
-  const newGame = { ...game };
-
-  // Rastgele bir başlangıç kelimesi seç
-  const startingWord = getRandomStartingWord();
-
-  // Kelimeyi tahtaya yerleştir
-  newGame.board = placeInitialWord(newGame.board, startingWord);
-
-  // Kullanılan harfleri havuzdan çıkar
-  newGame.letterPool = removeInitialWordFromPool(
-    newGame.letterPool,
-    startingWord
-  );
-
-  // İlk hamle yapıldığını belirt
-  newGame.firstMove = false;
-  newGame.centerRequired = false;
-
-  // Başlangıç kelimesini kaydet
-  newGame.initialWord = startingWord;
-
-  return newGame;
-};
+console.console.log(game.initialWord + " başlangıç kelimesi...");
