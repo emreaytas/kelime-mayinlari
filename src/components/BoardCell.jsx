@@ -22,6 +22,7 @@ export default function BoardCell({
   isTemporary,
   onPress,
 }) {
+  console.log("BoardCell çalıştı.");
   // Hücre tipi, renk ve açıklaması
   const getCellStyle = () => {
     switch (type) {

@@ -7,9 +7,11 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore"; // firestore kullanabilmek için.
 import { auth, firestore } from "../firebase/config"; // yapılandırma ayarlarını buradan görebiliriz.
+import { use } from "react";
 
 // Kullanıcı kaydı
 export const registerUser = async (username, email, password) => {
+  console.log("authService çalıştı ");
   try {
     // Kullanıcı adının benzersiz olup olmadığını kontrol et
     const usernameDoc = await getDoc(doc(firestore, "usernames", username));
@@ -24,6 +26,7 @@ export const registerUser = async (username, email, password) => {
       password
     );
     const user = userCredential.user;
+    console.log("authService çalıştı " + userCredential);
 
     // Profili güncelle (displayName'e kullanıcı adını ekle)
     await updateProfile(user, {
@@ -75,10 +78,18 @@ export const loginUser = async (username, password) => {
       email,
       password
     );
-    console.log(user.username + " giriş yaptı user: " + user);
+    console.log(
+      " giriş yaptı user: " +
+        userCredential.user +
+        " : " +
+        userCredential.user.email +
+        " : " +
+        userCredential.user.username
+    );
     console.log(
       userCredential.user + " userCredential bilgisi... authService."
     );
+
     return userCredential.user;
   } catch (error) {
     let errorMessage = "Giriş sırasında bir hata oluştu.";
@@ -96,7 +107,7 @@ export const loginUser = async (username, password) => {
 // Çıkış yap
 export const signOutUser = async () => {
   try {
-    console.log(user + " çıkış yaptı...");
+    console.log(auth.userCredential.username + " çıkış yaptı...");
     await signOut(auth);
     return true;
   } catch (error) {
@@ -148,7 +159,7 @@ export const updateUserStats = async (userId, isWin) => {
     });
     console.log(
       "updateUserStats metotu authService.js ",
-      gamesPlayed + " " + gamesWon + " " + successRate
+      gamesPlayed + " : " + gamesWon + " : " + successRate
     );
 
     return {

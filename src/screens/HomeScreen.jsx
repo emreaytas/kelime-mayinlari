@@ -15,6 +15,7 @@ import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { ref, onValue, push, set, get, remove } from "firebase/database";
 import { auth, firestore, database } from "../firebase/config";
+
 import {
   joinMatchmaking,
   cancelMatchmaking,
@@ -486,8 +487,10 @@ export default function HomeScreen() {
                   )}
                 </View>
                 <View style={styles.gameItemDetails}>
-                  <Text>Puanınız: {item.myScore}</Text>
-                  <Text>Rakip Puanı: {item.opponentScore}</Text>
+                  <Text style={styles.scoreText}>Puanınız: {item.myScore}</Text>
+                  <Text style={styles.scoreText}>
+                    Rakip Puanı: {item.opponentScore}
+                  </Text>
                 </View>
                 <View style={styles.gameItemFooter}>
                   <Text style={styles.gameType}>
@@ -532,29 +535,57 @@ export default function HomeScreen() {
                   <Text style={styles.opponentName}>
                     Rakip: {item.opponent || "Bilinmiyor"}
                   </Text>
-                  <Text
-                    style={
-                      item.result === "win"
-                        ? styles.winText
+                  <View style={styles.resultContainer}>
+                    <Text
+                      style={
+                        item.result === "win"
+                          ? styles.winText
+                          : item.result === "loss"
+                          ? styles.lossText
+                          : styles.drawText
+                      }
+                    >
+                      {item.result === "win"
+                        ? "Kazandınız"
                         : item.result === "loss"
-                        ? styles.lossText
-                        : styles.drawText
-                    }
-                  >
-                    {item.result === "win"
-                      ? "Kazandınız"
-                      : item.result === "loss"
-                      ? "Kaybettiniz"
-                      : "Berabere"}
-                  </Text>
+                        ? "Kaybettiniz"
+                        : "Berabere"}
+                    </Text>
+                    {item.result === "win" && (
+                      <Text style={styles.trophyIcon}>🏆</Text>
+                    )}
+                  </View>
                 </View>
                 <View style={styles.gameItemDetails}>
-                  <Text>Puanınız: {item.myScore}</Text>
-                  <Text>Rakip Puanı: {item.opponentScore}</Text>
+                  <Text
+                    style={[
+                      styles.scoreText,
+                      item.myScore > item.opponentScore
+                        ? styles.winningScore
+                        : null,
+                    ]}
+                  >
+                    Puanınız: {item.myScore}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.scoreText,
+                      item.opponentScore > item.myScore
+                        ? styles.winningScore
+                        : null,
+                    ]}
+                  >
+                    Rakip Puanı: {item.opponentScore}
+                  </Text>
                 </View>
                 <View style={styles.gameItemFooter}>
                   <Text style={styles.completionDate}>
                     {new Date(item.completedAt).toLocaleDateString()}
+                    {" - "}
+                    {new Date(item.completedAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </Text>
                 </View>
               </View>
@@ -574,6 +605,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Container ve Loading Stiller
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
@@ -584,6 +616,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
+  // Kullanıcı Bilgi Alanı Stiller
   userInfo: {
     padding: 15,
     backgroundColor: "white",
@@ -603,6 +637,16 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 4,
   },
+  statsContainer: {
+    flexDirection: "row",
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  statsText: {
+    fontSize: 12,
+    color: "#666",
+    marginRight: 10,
+  },
   logoutButton: {
     backgroundColor: "#f44336",
     padding: 10,
@@ -612,6 +656,8 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "bold",
   },
+
+  // Tab Stiller
   tabs: {
     flexDirection: "row",
     marginBottom: 15,
@@ -646,6 +692,8 @@ const styles = StyleSheet.create({
     shadowRadius: 1.5,
     elevation: 2,
   },
+
+  // Yeni Oyun Sekmesi Stiller
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -673,90 +721,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
-  gameItem: {
-    backgroundColor: "white",
-    borderRadius: 8,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.5,
-    elevation: 1,
-    overflow: "hidden",
-  },
-  gameItemContent: {
-    padding: 15,
-  },
-  gameItemHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  opponentName: {
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  yourTurn: {
-    color: "green",
-    fontWeight: "bold",
-  },
-  opponentTurn: {
-    color: "#666",
-    fontStyle: "italic",
-  },
-  gameItemDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  gameItemFooter: {
-    borderTopWidth: 1,
-    borderTopColor: "#eee",
-    paddingTop: 8,
-    marginTop: 4,
-  },
-  gameType: {
-    fontSize: 12,
-    color: "#666",
-  },
-  completionDate: {
-    fontSize: 12,
-    color: "#666",
-  },
-  emptyList: {
-    padding: 30,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  winText: {
-    color: "green",
-    fontWeight: "bold",
-  },
-  lossText: {
-    color: "red",
-    fontWeight: "bold",
-  },
-  drawText: {
-    color: "blue",
-    fontWeight: "bold",
-  },
-  statsContainer: {
-    flexDirection: "row",
-    marginTop: 4,
-    flexWrap: "wrap",
-  },
-  statsText: {
-    fontSize: 12,
-    color: "#666",
-    marginRight: 10,
-  },
-  timeLeft: {
-    fontSize: 12,
-    color: "#e74c3c", // Kırmızı
-    fontWeight: "bold",
-    marginLeft: 10,
-  },
+
+  // Eşleşme Bekleme Stiller
   matchmakingLoading: {
     alignItems: "center",
     marginTop: 20,
@@ -782,5 +748,105 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: "white",
     fontWeight: "bold",
+  },
+
+  // Oyun Kartı Stiller
+  gameItem: {
+    backgroundColor: "white",
+    borderRadius: 8,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    elevation: 1,
+    overflow: "hidden",
+  },
+  gameItemContent: {
+    padding: 15,
+  },
+  gameItemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  opponentName: {
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  yourTurn: {
+    color: "#4CAF50",
+    fontWeight: "bold",
+  },
+  opponentTurn: {
+    color: "#666",
+    fontStyle: "italic",
+  },
+  gameItemDetails: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    backgroundColor: "#f9f9f9",
+    padding: 8,
+    borderRadius: 5,
+  },
+  scoreText: {
+    fontWeight: "500",
+  },
+  winningScore: {
+    color: "#4CAF50",
+    fontWeight: "bold",
+  },
+  gameItemFooter: {
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  gameType: {
+    fontSize: 12,
+    color: "#666",
+  },
+  timeLeft: {
+    fontSize: 12,
+    color: "#FF9800",
+    fontWeight: "bold",
+  },
+
+  // Tamamlanmış Oyun Stiller
+  completionDate: {
+    fontSize: 12,
+    color: "#666",
+  },
+  resultContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  winText: {
+    color: "#4CAF50",
+    fontWeight: "bold",
+  },
+  lossText: {
+    color: "#F44336",
+    fontWeight: "bold",
+  },
+  drawText: {
+    color: "#2196F3",
+    fontWeight: "bold",
+  },
+  trophyIcon: {
+    fontSize: 16,
+    marginLeft: 4,
+  },
+
+  // Boş Liste Stili
+  emptyList: {
+    padding: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f9f9f9",
+    borderRadius: 8,
+    margin: 10,
   },
 });

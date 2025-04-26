@@ -14,6 +14,8 @@ export default function GameBoard({
   onCellPress,
   showSpecials = false, // Debug modu için mayın ve ödülleri göster
 }) {
+  console.log("GameBoard çalıştı. ");
+
   // Bir hücrenin seçili olup olmadığını kontrol et
   const isCellSelected = (row, col) => {
     return selectedCells.some((cell) => cell.row === row && cell.col === col);
