@@ -16,6 +16,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { ref, onValue, push, set, get, remove } from "firebase/database";
 import { auth, firestore, database } from "../firebase/config";
 import { syncUserData } from "../services/userService";
+import { Audio } from "expo-av"; // expo-av'dan Audio'yu import edin
 import {
   joinMatchmaking,
   cancelMatchmaking,
@@ -25,6 +26,7 @@ import {
 } from "../services/gameService";
 
 export default function HomeScreen() {
+  const [sound, setSound] = useState();
   const [user, setUser] = useState(null);
   const [activeGames, setActiveGames] = useState([]);
   const [completedGames, setCompletedGames] = useState([]);
@@ -34,7 +36,27 @@ export default function HomeScreen() {
   const [waitingForMatch, setWaitingForMatch] = useState(false);
   const [matchmakingType, setMatchmakingType] = useState(null);
 
-  // Periyodik süre kontrolü
+  async function loadSound() {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require("./click.mp3") // Ses dosyanızın yolu
+      );
+      setSound(sound);
+    } catch (error) {
+      console.error("Ses yüklenirken hata:", error);
+    }
+  }
+
+  useEffect(() => {
+    loadSound();
+
+    // Component unmount olduğunda sesi temizle
+    return () => {
+      if (sound) {
+        sound.unloadAsync();
+      }
+    };
+  }, []);
 
   // Kullanıcı verileri ve oyunları yükle
   useEffect(() => {
@@ -293,6 +315,11 @@ export default function HomeScreen() {
   // Çıkış yap
   const handleLogout = async () => {
     try {
+      if (sound) {
+        // ses varsa eğer çal...
+        await sound.playFromPositionAsync(0); // 0 milisaniyeden başla
+      }
+
       // Eşleşme bekliyorsa iptal et
       if (waitingForMatch && matchmakingType) {
         await cancelMatchmaking(matchmakingType);

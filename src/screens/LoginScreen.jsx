@@ -149,7 +149,7 @@ export default function LoginScreen() {
             <View style={styles.formContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Kullanıcı Adı / E-Posta"
+                placeholder="E-Posta"
                 placeholderTextColor="#888"
                 value={username}
                 onChangeText={setUsername}
