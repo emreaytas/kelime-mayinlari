@@ -2,7 +2,7 @@
 import { Redirect } from "expo-router";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useEffect, useState } from "react";
-import { auth } from "../src/firebase/config";
+import { auth } from "../src/firebase/config"; // Yolun doğru olduğundan emin olun
 import HomeScreen from "../src/screens/HomeScreen";
 
 export default function Home() {
@@ -13,12 +13,19 @@ export default function Home() {
     console.log("home.js useEffect çalıştı.");
     // Listen for auth state to change
     const unsubscribe = auth.onAuthStateChanged((user) => {
+      console.log(
+        "Auth state changed:",
+        user ? "Kullanıcı oturum açtı" : "Kullanıcı oturum açmadı"
+      );
       setUser(user);
       setInitializing(false);
     });
 
     // Cleanup subscription
-    return unsubscribe;
+    return () => {
+      console.log("home.js useEffect cleanup çalıştı");
+      unsubscribe();
+    };
   }, []);
 
   if (initializing) {
@@ -31,14 +38,11 @@ export default function Home() {
 
   if (!user) {
     // Not signed in, redirect to login
-    console.log("home.js Redirect href çalıştı");
-    console.log(user);
-
+    console.log("home.js: Kullanıcı bulunamadı, ana sayfaya yönlendiriliyor");
     return <Redirect href="/" />;
   }
 
-  console.log("home.js Redirect HomeScreen href çalıştı.");
-
+  console.log("home.js: HomeScreen gösteriliyor");
   // User is signed in, show home screen
   return <HomeScreen />;
 }

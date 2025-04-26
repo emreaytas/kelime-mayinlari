@@ -1,4 +1,4 @@
-// src/screens/LoginScreen.jsx
+// src/screens/LoginScreen.jsx - Giriş başarılı olduğunda yönlendirme için düzeltilmiş kısım
 import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
@@ -25,14 +25,16 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   console.log("LoginScreen export default function LoginScreen çalıştı");
+
   // Check if user is already logged in
   useEffect(() => {
-    console.log(
-      "LoginScreen export default function LoginScreen UseEffect çalıştı"
-    );
+    console.log("LoginScreen useEffect çalıştı");
 
     const checkAuth = () => {
       if (auth.currentUser) {
+        console.log(
+          "Kullanıcı zaten giriş yapmış, ana sayfaya yönlendiriliyor"
+        );
         router.replace("/home");
       }
     };
@@ -41,7 +43,12 @@ export default function LoginScreen() {
 
     // Listen for auth state changes
     const unsubscribe = auth.onAuthStateChanged((user) => {
+      console.log(
+        "LoginScreen auth state changed:",
+        user ? "Kullanıcı bulundu" : "Kullanıcı bulunamadı"
+      );
       if (user) {
+        console.log("Kullanıcı giriş yaptı, /home'a yönlendiriliyor");
         router.replace("/home");
       }
     });
@@ -63,6 +70,7 @@ export default function LoginScreen() {
 
     try {
       setLoading(true);
+      console.log("Giriş denemesi yapılıyor: " + username);
 
       // First try to find the user in Firestore by username
       const usernamesRef = doc(firestore, "usernames", username);
@@ -73,23 +81,36 @@ export default function LoginScreen() {
       if (usernameDoc.exists()) {
         // If username exists, get the associated email
         email = usernameDoc.data().email;
+        console.log("Kullanıcı adı bulundu, email: " + email);
       } else {
         // Daha kapsamlı bir e-posta doğrulaması için düzenli ifade (regex) kullanma
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
         if (emailRegex.test(username)) {
           email = username;
+          console.log("Email girildi: " + email);
         } else {
           // Create a "fake" email from username for Firebase Auth
           // This is a simplified approach - in a real app you'd want a more robust system
           email = `${username}@kelimemayinlari.app`;
+          console.log("Oluşturulan email: " + email);
         }
       }
-      // Attempt to sign in
-      await signInWithEmailAndPassword(auth, email, password);
 
-      // If successful, navigation will happen via the auth state listener
+      // Attempt to sign in
+      console.log("Firebase ile giriş yapılıyor: " + email);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      console.log("Giriş başarılı: ", userCredential.user.uid);
+
       setLoading(false);
+
+      // Manually navigate to home
+      console.log("Ana sayfaya yönlendiriliyor");
+      router.replace("/home");
     } catch (error) {
       setLoading(false);
       console.error("Login error:", error);
@@ -111,7 +132,7 @@ export default function LoginScreen() {
     }
   };
 
-  console.log("LoginScreen dönüyor.");
+  console.log("LoginScreen render oluyor");
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -128,7 +149,7 @@ export default function LoginScreen() {
             <View style={styles.formContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="E-Posta"
+                placeholder="Kullanıcı Adı / E-Posta"
                 placeholderTextColor="#888"
                 value={username}
                 onChangeText={setUsername}

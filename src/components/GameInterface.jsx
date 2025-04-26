@@ -41,11 +41,31 @@ export default function GameInterface({ gameId }) {
   const [specialPopup, setSpecialPopup] = useState(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
   const [remainingTime, setRemainingTime] = useState(null);
-  const toastTimer = useRef(null);
 
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
 
+  const showTemporaryMessage = (message) => {
+    // Önceki mesaj varsa ve timer çalışıyorsa temizle
+    if (toastTimer.current) {
+      clearTimeout(toastTimer.current);
+    }
+
+    // Havuz bilgisini gizle, uyarı mesajını göster
+    setStatusMessage(message);
+    setShowToast(true);
+
+    // 1 saniye sonra uyarı mesajını kaldır ve havuz bilgisini geri getir
+    toastTimer.current = setTimeout(() => {
+      setShowToast(false);
+      toastTimer.current = null;
+    }, 1000);
+  };
+
+  // useRef ile timer referansını tutma
+  const toastTimer = useRef(null);
+
+  // Temizlik işlemi için
   useEffect(() => {
     return () => {
       if (toastTimer.current) {
@@ -358,23 +378,6 @@ export default function GameInterface({ gameId }) {
 
     const isPlayer1 = auth.currentUser.uid === game.player1.id;
     return isPlayer1 ? game.player1Rewards || [] : game.player2Rewards || [];
-  };
-
-  const showTemporaryMessage = (message) => {
-    // Önceki mesaj varsa ve timer çalışıyorsa temizle
-    if (toastTimer.current) {
-      clearTimeout(toastTimer.current);
-    }
-
-    // Havuz bilgisini gizle, uyarı mesajını göster
-    setStatusMessage(message);
-    setShowToast(true);
-
-    // 1 saniye sonra uyarı mesajını kaldır ve havuz bilgisini geri getir
-    toastTimer.current = setTimeout(() => {
-      setShowToast(false);
-      toastTimer.current = null;
-    }, 1000);
   };
 
   // Hücre seçimi
@@ -914,7 +917,6 @@ export default function GameInterface({ gameId }) {
           <Text style={styles.score}>{opponent?.score || 0}</Text>
         </View>
       </View>
-
       {/* Oyun Tahtası */}
       <ScrollView contentContainerStyle={styles.boardContainer}>
         <GameBoard
@@ -1186,6 +1188,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 10,
+  },
+  toastMessage: {
+    color: "#FF6B6B", // Kırmızımsı uyarı rengi
+    fontWeight: "bold",
+    fontSize: 14,
+    textAlign: "center",
+    // Animation yoksa basit bir görünüm için
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   wordLabel: {
     marginRight: 5,

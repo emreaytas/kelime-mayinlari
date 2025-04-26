@@ -61,5 +61,3 @@ export const removeInitialWordFromPool = (letterPool, word) => {
 
   return newPool;
 };
-
-console.console.log(game.initialWord + " başlangıç kelimesi...");

@@ -1,4 +1,4 @@
-// src/firebase/config.js
+// src/firebase/config.js - Birleştirilmiş ve düzeltilmiş Firebase yapılandırması
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
@@ -22,26 +22,50 @@ const firebaseConfig = {
     "https://kelimemayinlari-e6d88-default-rtdb.europe-west1.firebasedatabase.app",
 };
 
+console.log("Firebase yapılandırması yükleniyor");
+
 // Initialize Firebase app once
-const app = initializeApp(firebaseConfig);
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+  console.log("Firebase başarıyla başlatıldı");
+} catch (error) {
+  console.error("Firebase başlatma hatası:", error);
+}
 
 // Initialize services conditionally
-
-// For Auth, check if it's already initialized
 let auth;
+let firestore;
+let database;
+
 try {
   // Try to get existing auth instance first
   auth = getAuth(app);
+  console.log("Mevcut Auth bulundu");
 } catch (error) {
+  console.log("Yeni Auth oluşturuluyor");
   // If not initialized, create new auth instance with persistence
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
+  try {
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+    console.log("Auth başarıyla oluşturuldu");
+  } catch (authError) {
+    console.error("Auth oluşturma hatası:", authError);
+  }
 }
 
-// Initialize Firestore and Realtime Database
-const firestore = getFirestore(app);
-const database = getDatabase(app);
+try {
+  // Initialize Firestore
+  firestore = getFirestore(app);
+  console.log("Firestore başarıyla başlatıldı");
+
+  // Initialize Realtime Database
+  database = getDatabase(app);
+  console.log("Realtime Database başarıyla başlatıldı");
+} catch (dbError) {
+  console.error("Database başlatma hatası:", dbError);
+}
 
 // Export modules
 export { auth, firestore, database };
