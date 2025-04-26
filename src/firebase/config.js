@@ -1,9 +1,13 @@
 // src/firebase/config.js
 import { initializeApp } from "firebase/app";
+import {
+  getAuth,
+  getReactNativePersistence,
+  initializeAuth,
+} from "firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
-import { initializeAuth, getReactNativePersistence } from "firebase/auth";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Firebase configuration
 const firebaseConfig = {
@@ -18,16 +22,27 @@ const firebaseConfig = {
     "https://kelimemayinlari-e6d88-default-rtdb.europe-west1.firebasedatabase.app",
 };
 
-// Initialize Firebase
+// Initialize Firebase app once
 const app = initializeApp(firebaseConfig);
 
-// Initialize Auth with AsyncStorage persistence
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+// Initialize services conditionally
 
+// For Auth, check if it's already initialized
+let auth;
+try {
+  // Try to get existing auth instance first
+  auth = getAuth(app);
+} catch (error) {
+  // If not initialized, create new auth instance with persistence
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+}
+
+// Initialize Firestore and Realtime Database
 const firestore = getFirestore(app);
 const database = getDatabase(app);
 
+// Export modules
 export { auth, firestore, database };
 export default app;

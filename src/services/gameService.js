@@ -102,14 +102,21 @@ export const checkGameTimers = async () => {
             const isDraw = false; // Süre aşımında beraberlik olmaz
 
             // Oyunu güncelle
+            // Nokta içeren yollar yerine iç içe objeler kullan
             const updates = {
               status: "completed",
               completedAt: now,
               reason: "timeout",
               timedOutPlayer: currentTurnPlayer,
               winner: winnerId,
-              "player1.score": player1Score,
-              "player2.score": player2Score,
+              player1: {
+                ...gameData.player1,
+                score: player1Score,
+              },
+              player2: {
+                ...gameData.player2,
+                score: player2Score,
+              },
             };
 
             const updatedGameData = {
@@ -480,12 +487,18 @@ export const placeWord = async (gameId, placedCells) => {
       consecutivePasses: 0, // Pas geçme sayacını sıfırla
     };
 
-    // Puanları güncelle
+    // Puanları güncelle - DÜZELTME: Nokta içeren yollar yerine iç içe obje kullan
     if (isPlayer1) {
-      updates["player1.score"] = (game.player1.score || 0) + points;
+      updates.player1 = {
+        ...game.player1,
+        score: (game.player1.score || 0) + points,
+      };
       updates.player1Rack = userRackCopy;
     } else {
-      updates["player2.score"] = (game.player2.score || 0) + points;
+      updates.player2 = {
+        ...game.player2,
+        score: (game.player2.score || 0) + points,
+      };
       updates.player2Rack = userRackCopy;
     }
 
@@ -805,6 +818,7 @@ export const getUserActiveGames = async () => {
     throw error;
   }
 };
+
 // Kullanıcının tamamlanmış oyunlarını getir
 export const getUserCompletedGames = async () => {
   try {

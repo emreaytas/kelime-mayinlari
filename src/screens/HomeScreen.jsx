@@ -15,7 +15,7 @@ import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { ref, onValue, push, set, get, remove } from "firebase/database";
 import { auth, firestore, database } from "../firebase/config";
-
+import { syncUserData } from "../services/userService";
 import {
   joinMatchmaking,
   cancelMatchmaking,
@@ -35,26 +35,6 @@ export default function HomeScreen() {
   const [matchmakingType, setMatchmakingType] = useState(null);
 
   // Periyodik süre kontrolü
-  useEffect(() => {
-    // Başlangıçta bir kez süreleri kontrol et
-    const checkTimers = async () => {
-      try {
-        await checkGameTimers();
-      } catch (err) {
-        console.error("Timer check error:", err);
-      }
-    };
-
-    checkTimers();
-
-    // Belirli aralıklarla süreleri kontrol et (her dakika)
-    const timerInterval = setInterval(checkTimers, 60 * 1000);
-
-    // Cleanup
-    return () => {
-      clearInterval(timerInterval);
-    };
-  }, []);
 
   // Kullanıcı verileri ve oyunları yükle
   useEffect(() => {
@@ -66,15 +46,38 @@ export default function HomeScreen() {
           return;
         }
 
+        setLoading(true);
+
+        // Kullanıcı verilerini senkronize et (Realtime DB -> Firestore)
+        await syncUserData(auth.currentUser.uid);
+
         // Firestore'dan kullanıcı profili bilgilerini al
         const userDoc = await getDoc(
           doc(firestore, "users", auth.currentUser.uid)
         );
 
         if (userDoc.exists()) {
+          // Firestore'dan alınan verileri State'e kaydet
           setUser(userDoc.data());
         } else {
-          console.warn("User document not found in Firestore");
+          // Firestore'da bulunamazsa Realtime Database'den al
+          const userRef = ref(database, `users/${auth.currentUser.uid}`);
+          const snapshot = await get(userRef);
+
+          if (snapshot.exists()) {
+            setUser(snapshot.val());
+          } else {
+            console.warn(
+              "User document not found in Firestore or Realtime Database"
+            );
+            // Kullanıcı için varsayılan değerler oluştur
+            setUser({
+              username: auth.currentUser.displayName || "Kullanıcı",
+              gamesPlayed: 0,
+              gamesWon: 0,
+              successRate: 0,
+            });
+          }
         }
 
         // Aktif oyunları yükle

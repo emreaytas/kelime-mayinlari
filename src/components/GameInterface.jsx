@@ -839,10 +839,6 @@ export default function GameInterface({ gameId }) {
           <Text style={styles.score}>{currentPlayer?.score || 0}</Text>
         </View>
 
-        <View style={styles.poolInfo}>
-          <Text>Kalan: {game.letterPool?.length || 0}</Text>
-        </View>
-
         <View style={styles.playerInfo}>
           <Text style={styles.playerName}>{opponent?.username || "Rakip"}</Text>
           <Text style={styles.score}>{opponent?.score || 0}</Text>

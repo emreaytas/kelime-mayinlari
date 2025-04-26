@@ -7,7 +7,6 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore"; // firestore kullanabilmek için.
 import { auth, firestore } from "../firebase/config"; // yapılandırma ayarlarını buradan görebiliriz.
-import { use } from "react";
 
 // Kullanıcı kaydı
 export const registerUser = async (username, email, password) => {
