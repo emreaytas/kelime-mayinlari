@@ -251,12 +251,20 @@ export const updateSuccessRate = async (userId) => {
  */
 export const saveGameRecord = async (gameId, gameData) => {
   try {
+    // Derin kopya oluştur
+    const cleanGameData = JSON.parse(JSON.stringify(gameData));
+
+    // Firebase'in kabul etmediği veri yapılarını temizle
+    cleanFirebaseData(cleanGameData);
+
     const gameRef = doc(firestore, "games", gameId);
 
     await setDoc(gameRef, {
-      ...gameData,
-      completedAt: Timestamp.fromMillis(gameData.completedAt || Date.now()),
-      startTime: Timestamp.fromMillis(gameData.startTime || Date.now()),
+      ...cleanGameData,
+      completedAt: Timestamp.fromMillis(
+        cleanGameData.completedAt || Date.now()
+      ),
+      startTime: Timestamp.fromMillis(cleanGameData.startTime || Date.now()),
       lastSaved: Timestamp.now(),
     });
 
@@ -266,7 +274,50 @@ export const saveGameRecord = async (gameId, gameData) => {
     throw error;
   }
 };
+function cleanFirebaseData(obj) {
+  if (!obj || typeof obj !== "object") return;
 
+  Object.entries(obj).forEach(([key, value]) => {
+    // Null değerleri kontrol et
+    if (value === null) {
+      return;
+    }
+
+    // Dizilerin iç içe dizi içermediğinden emin ol
+    if (Array.isArray(value)) {
+      // İç içe dizi içeren dizileri nesne haritalarına dönüştür
+      if (value.some((item) => Array.isArray(item))) {
+        obj[key] = convertArrayToMap(value);
+      } else {
+        // Dizinin her öğesini temizle
+        value.forEach((item) => {
+          if (item && typeof item === "object") {
+            cleanFirebaseData(item);
+          }
+        });
+      }
+    }
+    // Nesnelerin içindeki verileri temizle
+    else if (typeof value === "object") {
+      cleanFirebaseData(value);
+    }
+  });
+}
+
+function convertArrayToMap(array) {
+  const result = {};
+  array.forEach((item, index) => {
+    if (Array.isArray(item)) {
+      result[`item_${index}`] = convertArrayToMap(item);
+    } else if (item && typeof item === "object") {
+      cleanFirebaseData(item);
+      result[`item_${index}`] = item;
+    } else {
+      result[`item_${index}`] = item;
+    }
+  });
+  return result;
+}
 /**
  * Kullanıcının oyun geçmişini getirir
  * @param {string} userId - Kullanıcı ID'si

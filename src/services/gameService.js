@@ -172,7 +172,6 @@ export const checkGameTimers = async () => {
   }
 };
 
-
 // Eşleşme sistemine katıl
 export const joinMatchmaking = async (gameType) => {
   try {
@@ -376,7 +375,7 @@ export const listenToGameChanges = (gameId, callback) => {
 };
 
 // Kelime yerleştirme
-export const placeWord = async (gameId, placedCells) => {
+const placeWord = async (gameId, placedCells) => {
   try {
     if (!auth.currentUser) {
       throw new Error("Giriş yapılmamış");
@@ -484,13 +483,6 @@ export const placeWord = async (gameId, placedCells) => {
           special === "EkstraHamleJokeri"
         ) {
           rewards.push(special);
-
-          // Oyuncunun ödüllerine ekle
-          if (isPlayer1) {
-            game.player1Rewards = [...(game.player1Rewards || []), special];
-          } else {
-            game.player2Rewards = [...(game.player2Rewards || []), special];
-          }
         }
 
         // Özel hücreyi kullanıldı olarak işaretle
@@ -499,7 +491,6 @@ export const placeWord = async (gameId, placedCells) => {
     });
 
     // ÖNEMLİ: Kullanılan harflerin yerine yeni harf verilmesi
-
     // 1. Kullanıcının mevcut rafını kopyala
     let userRackCopy = [...userRack];
 
@@ -536,6 +527,28 @@ export const placeWord = async (gameId, placedCells) => {
     // 7. Kullanıcının rafına yeni harfleri ekle
     userRackCopy = [...userRackCopy, ...newLetters];
 
+    // Ödülleri Firebase uyumlu bir formatta saklama
+    // ÖNEMLİ: İç içe dizi hatası burada olabilir
+    let player1Rewards = Array.isArray(game.player1Rewards)
+      ? [...game.player1Rewards]
+      : [];
+    let player2Rewards = Array.isArray(game.player2Rewards)
+      ? [...game.player2Rewards]
+      : [];
+
+    // Firebase'in iç içe dizi sorunu için, ödülleri map olarak saklayalım
+    if (rewards.length > 0) {
+      if (isPlayer1) {
+        for (const reward of rewards) {
+          player1Rewards.push(reward);
+        }
+      } else {
+        for (const reward of rewards) {
+          player2Rewards.push(reward);
+        }
+      }
+    }
+
     // Oyun verilerini güncelle
     const updates = {
       board: boardCopy,
@@ -555,28 +568,14 @@ export const placeWord = async (gameId, placedCells) => {
         score: (game.player1.score || 0) + points,
       };
       updates.player1Rack = userRackCopy;
-
-      // Ödülleri güncelle
-      if (rewards.length > 0) {
-        updates.player1Rewards = game.player1Rewards || [];
-        rewards.forEach((reward) => {
-          updates.player1Rewards.push(reward);
-        });
-      }
+      updates.player1Rewards = player1Rewards;
     } else {
       updates.player2 = {
         ...game.player2,
         score: (game.player2.score || 0) + points,
       };
       updates.player2Rack = userRackCopy;
-
-      // Ödülleri güncelle
-      if (rewards.length > 0) {
-        updates.player2Rewards = game.player2Rewards || [];
-        rewards.forEach((reward) => {
-          updates.player2Rewards.push(reward);
-        });
-      }
+      updates.player2Rewards = player2Rewards;
     }
 
     // Puan transferi varsa rakibin puanını güncelle
@@ -619,126 +618,6 @@ export const placeWord = async (gameId, placedCells) => {
   }
 };
 
-export const calculateWordPoints = (placedCells, board, rack) => {
-  let totalPoints = 0;
-  let wordMultiplier = 1;
-
-  placedCells.forEach((cell) => {
-    const { row, col, rackIndex } = cell;
-    const letterObj = rack[rackIndex];
-
-    // Harfin puan değerini al
-    let letterPoints = 0;
-    if (typeof letterObj === "object") {
-      letterPoints = letterObj.points || 0;
-    } else if (typeof letterObj === "string") {
-      letterPoints = letterValues[letterObj] || 0;
-    }
-
-    // Özel hücre çarpanlarını uygula
-    const cellType = board[row][col].type;
-    if (cellType === "H2") {
-      letterPoints *= 2; // Harf puanı 2 katı
-    } else if (cellType === "H3") {
-      letterPoints *= 3; // Harf puanı 3 katı
-    } else if (cellType === "K2") {
-      wordMultiplier *= 2; // Kelime puanı 2 katı
-    } else if (cellType === "K3") {
-      wordMultiplier *= 3; // Kelime puanı 3 katı
-    }
-
-    totalPoints += letterPoints;
-  });
-
-  // Kelime çarpanını uygula
-  totalPoints *= wordMultiplier;
-
-  return totalPoints;
-};
-
-export const calculateRawPoints = (placedCells, rack) => {
-  let totalPoints = 0;
-
-  placedCells.forEach((cell) => {
-    const { rackIndex } = cell;
-    const letterObj = rack[rackIndex];
-
-    // Harfin puan değerini al
-    let letterPoints = 0;
-    if (typeof letterObj === "object") {
-      letterPoints = letterObj.points || 0;
-    } else if (typeof letterObj === "string") {
-      letterPoints = letterValues[letterObj] || 0;
-    }
-
-    totalPoints += letterPoints;
-  });
-
-  return totalPoints;
-};
-
-// Pas geç
-export const passTurn = async (gameId) => {
-  try {
-    if (!auth.currentUser) {
-      throw new Error("Giriş yapılmamış");
-    }
-
-    const userId = auth.currentUser.uid;
-
-    // Oyun verilerini al
-    const game = await getGameData(gameId);
-
-    // Sıra kontrolü
-    if (game.turnPlayer !== userId) {
-      throw new Error("Sıra sizde değil");
-    }
-
-    // Sırayı rakibe devret
-    const updates = {
-      turnPlayer:
-        game.player1.id === userId ? game.player2.id : game.player1.id,
-      lastMoveTime: Date.now(),
-      consecutivePasses: (game.consecutivePasses || 0) + 1,
-    };
-
-    // Her iki oyuncu da pas geçtiyse (ardışık 2 pas)
-    if (updates.consecutivePasses >= 2) {
-      updates.status = "completed"; // art arda pas olursa oyun biter berabere.
-      updates.completedAt = Date.now();
-      updates.reason = "pass";
-    }
-
-    // Firebase güncelle
-    await update(ref(database, `games/${gameId}`), updates);
-
-    return {
-      success: true,
-      gameEnded: updates.status === "completed",
-    };
-  } catch (error) {
-    console.error("Pass turn error:", error);
-    throw error;
-  }
-};
-
-// Teslim ol
-export const surrender = async (gameId) => {
-  try {
-    if (!auth.currentUser) {
-      throw new Error("Giriş yapılmamış");
-    }
-
-    await endGame(gameId, "surrender");
-
-    return { success: true };
-  } catch (error) {
-    console.error("Surrender error:", error);
-    throw error;
-  }
-};
-
-// Oyunu bitir
 export const endGame = async (gameId, reason) => {
   try {
     const game = await getGameData(gameId);
@@ -765,18 +644,24 @@ export const endGame = async (gameId, reason) => {
       }
     }
 
+    // İç içe dizi sorununu önlemek için oyun verisini temizle
+    const cleanedGame = JSON.parse(JSON.stringify(game));
+
+    // Firebase'in kabul etmediği veri yapılarını düzelt
+    cleanGameDataForFirebase(cleanedGame);
+
     // Oyunu tamamlandı olarak işaretle
     const gameData = {
-      ...game,
+      ...cleanedGame,
       status: "completed",
       completedAt: Date.now(),
       reason,
       player1: {
-        ...game.player1,
+        ...cleanedGame.player1,
         score: player1Score,
       },
       player2: {
-        ...game.player2,
+        ...cleanedGame.player2,
         score: player2Score,
       },
     };
@@ -840,6 +725,38 @@ export const endGame = async (gameId, reason) => {
     throw error;
   }
 };
+
+// gameService.js içine yeni yardımcı fonksiyon ekleyin
+// Bu fonksiyon iç içe dizileri ve diğer Firebase ile uyumlu olmayan veri yapılarını temizler
+function cleanGameDataForFirebase(gameData) {
+  if (!gameData || typeof gameData !== "object") return;
+
+  // İç içe dizi içeren önemli alanlar
+  const arrayFields = ["player1Rewards", "player2Rewards"];
+
+  // Bu alanların her biri için kontrol yap
+  arrayFields.forEach((field) => {
+    if (Array.isArray(gameData[field])) {
+      // Dizinin her bir elemanını kontrol et - iç içe dizi varsa nesneye dönüştür
+      if (gameData[field].some((item) => Array.isArray(item))) {
+        // İç içe dizi olan alanları nesne haritasına dönüştür
+        const convertedData = {};
+        gameData[field].forEach((item, index) => {
+          convertedData[`item_${index}`] = item;
+        });
+        gameData[field] = convertedData;
+      }
+    }
+  });
+
+  // Tüm alt nesneleri ve dizileri de kontrol et
+  Object.entries(gameData).forEach(([key, value]) => {
+    // Null değil ve nesne veya dizi ise içeriğini temizle
+    if (value && typeof value === "object") {
+      cleanGameDataForFirebase(value);
+    }
+  });
+}
 
 // Ödül kullan
 export const useReward = async (gameId, rewardType) => {

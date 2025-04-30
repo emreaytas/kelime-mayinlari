@@ -290,7 +290,6 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // ÖNEMLİ: Bu kısmı değiştir - aynı zamanda bir raf ve bir tahta hücresi seçilebilir olmalı
     // Seçili rafları güncelle
     const newSelectedIndices = [...selectedRackIndices];
     const indexPos = newSelectedIndices.indexOf(index);
@@ -298,17 +297,24 @@ export default function GameInterface({ gameId }) {
     if (indexPos !== -1) {
       // Eğer bu raf zaten seçiliyse, seçimi kaldır
       newSelectedIndices.splice(indexPos, 1);
+      setSelectedRackIndices(newSelectedIndices);
+      showTemporaryMessage("Harf seçimi kaldırıldı");
     } else {
-      // Raf seçimini güncelle (tek bir harf seçilebilir)
-      newSelectedIndices.length = 0; // Diğer tüm seçimleri temizle
-      newSelectedIndices.push(index);
-    }
-
-    setSelectedRackIndices(newSelectedIndices);
-
-    // Aktif seçim hakkında bir geri bildirim göster
-    if (newSelectedIndices.length > 0) {
+      // Yeni bir raf seçimi yap
+      // Tek seferde sadece 1 harf seçilebilir
+      setSelectedRackIndices([index]);
       showTemporaryMessage("Şimdi tahtada bir hücre seçin");
+
+      // Debug için log
+      const userRack = getUserRack();
+      if (userRack && index >= 0 && index < userRack.length) {
+        const letter = userRack[index];
+        console.log(
+          `Seçilen harf: ${
+            typeof letter === "object" ? letter.letter : letter
+          }, indeks: ${index}`
+        );
+      }
     }
   };
 
@@ -397,17 +403,28 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    console.log(row + ":" + col);
-
-    // ÖNEMLİ: Bu kontrol kritik - eğer raf seçili değilse hücre seçilemez
+    // Eğer raf seçili değilse hücre seçilemez
     if (selectedRackIndices.length === 0) {
       showTemporaryMessage("Önce rafınızdan bir harf seçin!");
       return;
     }
 
+    // Seçilen raf indeksini al
+    const rackIndex = selectedRackIndices[0];
+
     // Hücre boş mu kontrol et
     if (game.board[row][col].letter) {
       showTemporaryMessage("Bu hücre zaten dolu!");
+      return;
+    }
+
+    // Hücre zaten seçili mi?
+    const alreadySelected = selectedBoardCells.some(
+      (cell) => cell.row === row && cell.col === col
+    );
+
+    if (alreadySelected) {
+      showTemporaryMessage("Bu hücre zaten seçili!");
       return;
     }
 
@@ -424,10 +441,16 @@ export default function GameInterface({ gameId }) {
         showTemporaryMessage("Harf mevcut bir kelimeye bitişik olmalıdır!");
         return;
       }
+    } else {
+      // Bir sonraki harf, mevcut seçili harflerle aynı doğrultuda olmalı
+      if (selectedBoardCells.length >= 1) {
+        const isValidPlacement = checkValidPlacement(row, col);
+        if (!isValidPlacement) {
+          showTemporaryMessage("Harfler aynı doğrultuda yerleştirilmelidir!");
+          return;
+        }
+      }
     }
-
-    // ÖNEMLİ: Seçilen raf indeksini al - burada her zaman ilk seçili harfi kullanıyoruz
-    const rackIndex = selectedRackIndices[0];
 
     // Yeni seçili hücre oluştur
     const newCell = { row, col, rackIndex };
@@ -446,6 +469,12 @@ export default function GameInterface({ gameId }) {
 
     // Oluşan kelimeyi kontrol et
     checkWord(newSelectedCells);
+
+    // Debug için log
+    console.log(
+      `Hücre seçildi - Satır: ${row}, Sütun: ${col}, Raf İndeksi: ${rackIndex}`
+    );
+    console.log("Seçili hücreler:", JSON.stringify(newSelectedCells));
   };
 
   // Yerleştirme yönünü belirle

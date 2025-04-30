@@ -26,32 +26,37 @@ export default function GameBoard({
       (cell) => cell.row === row && cell.col === col
     );
 
-    if (selectedCell) {
-      const userRack = getUserRack ? getUserRack() : [];
-
-      if (
-        userRack &&
-        Array.isArray(userRack) &&
-        userRack.length > 0 &&
-        selectedCell.rackIndex !== undefined &&
-        selectedCell.rackIndex >= 0 &&
-        selectedCell.rackIndex < userRack.length
-      ) {
-        const letterObj = userRack[selectedCell.rackIndex];
-
-        // Debug için konsola yazdırma (geliştirme aşamasında sonra kaldırılabilir)
-        console.log("Selected letter:", letterObj);
-
-        if (letterObj) {
-          return typeof letterObj === "object" ? letterObj.letter : letterObj;
-        }
-      }
+    if (!selectedCell || selectedCell.rackIndex === undefined) {
+      return null;
     }
-    return null;
+
+    const userRack = getUserRack ? getUserRack() : [];
+
+    if (!userRack || !Array.isArray(userRack) || userRack.length === 0) {
+      return null;
+    }
+
+    if (
+      selectedCell.rackIndex < 0 ||
+      selectedCell.rackIndex >= userRack.length
+    ) {
+      console.warn(
+        `Geçersiz raf indeksi: ${selectedCell.rackIndex}, raf uzunluğu: ${userRack.length}`
+      );
+      return null;
+    }
+
+    const letterObj = userRack[selectedCell.rackIndex];
+
+    if (!letterObj) {
+      return null;
+    }
+
+    // Harf nesne veya string olabilir
+    return typeof letterObj === "object" ? letterObj.letter : letterObj;
   };
 
   // Tahta satırları ve hücrelerini oluştur
-  // Render işlemi sırasında hem mevcut harfleri hem de geçici yerleştirilen harfleri göster
   const renderBoard = () => {
     const rows = [];
 
@@ -67,10 +72,17 @@ export default function GameBoard({
         let isTemporary = false;
 
         // Eğer bu hücre şu anda seçili ise, geçici harfi göster
-        const selectedLetter = getSelectedCellLetter(i, j);
-        if (isSelected && selectedLetter) {
-          displayLetter = selectedLetter;
-          isTemporary = true;
+        if (isSelected) {
+          const selectedLetter = getSelectedCellLetter(i, j);
+          if (selectedLetter) {
+            displayLetter = selectedLetter;
+            isTemporary = true;
+
+            // Debug için log
+            console.log(
+              `Geçici harf yerleştirildi - Satır: ${i}, Sütun: ${j}, Harf: ${displayLetter}`
+            );
+          }
         }
 
         cells.push(

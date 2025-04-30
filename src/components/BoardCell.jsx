@@ -62,6 +62,11 @@ export default function BoardCell({
   const { backgroundColor, description } = getCellStyle();
   const specialIcon = getSpecialIcon();
 
+  // Debug için harfi konsola yazdır
+  if (isTemporary && letter) {
+    console.log(`Geçici harf gösteriliyor: ${letter}`);
+  }
+
   return (
     <TouchableOpacity
       style={[
@@ -72,8 +77,8 @@ export default function BoardCell({
         letter && isTemporary && styles.temporaryFilledCell,
       ]}
       onPress={onPress}
-      // Önemli: Kalıcı dolu hücrelere basılabilmesini engelliyoruz, ancak seçilmiş hücrelere basılabilmesi gerekiyor
-      disabled={letter !== null && !isTemporary && !isSelected}
+      // Dolu hücrelere basılma özelliğini düzenleme
+      disabled={letter !== null && !isTemporary}
     >
       {letter ? (
         // Harf içeren hücre
