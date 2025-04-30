@@ -15,6 +15,15 @@ export default function GameBoard({
   showSpecials = false, // Debug modu için mayın ve ödülleri göster
   getUserRack, // Harfleri getiren fonksiyon
 }) {
+  if (!board || !Array.isArray(board) || board.length === 0) {
+    console.error("Geçersiz tahta verisi:", board);
+    return (
+      <View style={styles.container}>
+        <View style={styles.board}></View>
+      </View>
+    );
+  }
+
   // Bir hücrenin seçili olup olmadığını kontrol et
   const isCellSelected = (row, col) => {
     return selectedCells.some((cell) => cell.row === row && cell.col === col);
@@ -30,7 +39,7 @@ export default function GameBoard({
       return null;
     }
 
-    const userRack = getUserRack();
+    const userRack = getUserRack ? getUserRack() : [];
 
     if (!userRack || !Array.isArray(userRack) || userRack.length === 0) {
       return null;
@@ -55,19 +64,36 @@ export default function GameBoard({
     return typeof letterObj === "object" ? letterObj.letter : letterObj;
   };
 
+  // Hücreye tıklama işleyicisi
+  const handleCellPress = (row, col) => {
+    console.log(`GameBoard: Hücre tıklandı (${row}, ${col})`);
+    if (onCellPress) {
+      onCellPress(row, col);
+    }
+  };
+
   // Tahta satırları ve hücrelerini oluştur
   const renderBoard = () => {
     const rows = [];
+
+    // Tahta verisi kontrolü
+    if (!board || !Array.isArray(board) || board.length === 0) {
+      console.error("Geçersiz tahta verisi:", board);
+      return [];
+    }
 
     for (let i = 0; i < 15; i++) {
       const cells = [];
 
       for (let j = 0; j < 15; j++) {
-        const cellData = board[i][j] || {};
+        // Buradaki hata koruması çok önemli
+        // Hücrelere güvenli erişim sağlayın
+        const cellData =
+          board[i] && board[i][j] ? board[i][j] : { letter: null, type: null };
         const isSelected = isCellSelected(i, j);
 
         // Varsayılan olarak hücredeki kalıcı harfi göster
-        let displayLetter = cellData.letter;
+        let displayLetter = cellData.letter || null;
         let isTemporary = false;
 
         // Eğer bu hücre şu anda seçili ise, geçici harfi göster
@@ -88,7 +114,7 @@ export default function GameBoard({
             special={showSpecials ? cellData.special : null}
             isSelected={isSelected}
             isTemporary={isTemporary}
-            onPress={() => onCellPress && onCellPress(i, j)}
+            onPress={() => handleCellPress(i, j)}
           />
         );
       }
@@ -116,6 +142,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 0,
     margin: 0,
+    backgroundColor: "#fff", // Arka plan rengi
   },
   board: {
     width: BOARD_SIZE,
@@ -123,7 +150,7 @@ const styles = StyleSheet.create({
     borderWidth: 2, // Daha belirgin kenar
     borderColor: "#333", // Daha koyu kenar rengi
     backgroundColor: "#fff",
-    flexDirection: "column", // Dikey yerleşim
+    overflow: "hidden", // Taşmaları önle
   },
   row: {
     flexDirection: "row", // Yatay yerleşim

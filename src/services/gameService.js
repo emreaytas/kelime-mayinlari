@@ -374,8 +374,7 @@ export const listenToGameChanges = (gameId, callback) => {
   }
 };
 
-// Kelime yerleştirme
-const placeWord = async (gameId, placedCells) => {
+export const placeWord = async (gameId, placedCells) => {
   try {
     if (!auth.currentUser) {
       throw new Error("Giriş yapılmamış");
@@ -614,6 +613,85 @@ const placeWord = async (gameId, placedCells) => {
     };
   } catch (error) {
     console.error("Place word error:", error);
+    throw error;
+  }
+};
+
+export const calculateRawPoints = (placedCells, rack) => {
+  let totalPoints = 0;
+
+  placedCells.forEach((cell) => {
+    const { rackIndex } = cell;
+
+    // Harfi oyuncunun rafından al
+    const letterObj = rack[rackIndex];
+    const letter = typeof letterObj === "object" ? letterObj.letter : letterObj;
+
+    // Harfin puan değerini al (çarpanlar yok)
+    const letterPoint = letter === "JOKER" ? 0 : letterValues[letter] || 0;
+    totalPoints += letterPoint;
+  });
+
+  return totalPoints;
+};
+
+export const passTurn = async (gameId) => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error("Giriş yapılmamış");
+    }
+
+    const userId = auth.currentUser.uid;
+
+    // Oyun verilerini al
+    const game = await getGameData(gameId);
+
+    // Sıra kontrolü
+    if (game.turnPlayer !== userId) {
+      throw new Error("Sıra sizde değil");
+    }
+
+    // Ardışık pas geçme sayacını artır
+    const consecutivePasses = (game.consecutivePasses || 0) + 1;
+
+    // Ardışık 2 pas geçme oyunu bitirir
+    if (consecutivePasses >= 2) {
+      // Oyunu bitir
+      return await endGame(gameId, "pass");
+    }
+
+    // Oyun verilerini güncelle
+    const updates = {
+      turnPlayer:
+        game.player1.id === userId ? game.player2.id : game.player1.id,
+      lastMoveTime: Date.now(),
+      consecutivePasses,
+    };
+
+    // Firebase güncelle
+    await update(ref(database, `games/${gameId}`), updates);
+
+    return {
+      success: true,
+      nextPlayer: updates.turnPlayer,
+      consecutivePasses,
+    };
+  } catch (error) {
+    console.error("Pass turn error:", error);
+    throw error;
+  }
+};
+
+export const surrender = async (gameId) => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error("Giriş yapılmamış");
+    }
+
+    // Oyunu bitir (teslim olma nedeniyle)
+    return await endGame(gameId, "surrender");
+  } catch (error) {
+    console.error("Surrender error:", error);
     throw error;
   }
 };

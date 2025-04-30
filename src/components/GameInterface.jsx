@@ -65,6 +65,27 @@ export default function GameInterface({ gameId }) {
   // useRef ile timer referansını tutma
   const toastTimer = useRef(null);
 
+  useEffect(() => {
+    console.log("========================");
+    console.log("OYUN TAHTASI DEBUG BİLGİLERİ:");
+    console.log("Oyun ID:", gameId);
+    console.log("Oyun Yükleniyor mu:", loading);
+    console.log("Oyun Verisi Var mı:", !!game);
+    if (game && game.board) {
+      console.log(
+        "Tahta Boyutu:",
+        game.board.length,
+        "x",
+        game.board[0].length
+      );
+      console.log("Kullanıcı Harfleri:", getUserRack());
+      console.log("Seçili Raf İndeksleri:", selectedRackIndices);
+      console.log("Seçili Hücreler:", selectedBoardCells);
+      console.log("Kullanıcının Sırası mı:", isUserTurn());
+    }
+    console.log("========================");
+  }, [game, selectedRackIndices, selectedBoardCells]);
+
   // Temizlik işlemi için
   useEffect(() => {
     return () => {
@@ -262,10 +283,10 @@ export default function GameInterface({ gameId }) {
     }
 
     message += `\n\n${gameData.player1.username}: ${gameData.player1.score} puan\n${gameData.player2.username}: ${gameData.player2.score} puan`;
-
-    Alert.alert(title, message, [
-      { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
-    ]);
+    console.log(message + " alerti kaldırdım kod: ");
+    /*Alert.alert(title, message, [
+  { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
+]); */
   };
 
   // Kullanıcının harflerini al
@@ -411,57 +432,50 @@ export default function GameInterface({ gameId }) {
   // Hücre seçimi
 
   const handleCellPress = (row, col) => {
-    console.log(`handleCellPress başladı - Satır: ${row}, Sütun: ${col}`);
+    console.log(`handleCellPress çağrıldı - Satır: ${row}, Sütun: ${col}`);
 
+    // Oyun kontrolü
+    if (!game || !game.board) {
+      console.error("Oyun veya tahta tanımlı değil!");
+      return;
+    }
+
+    // Kullanıcının sırası değilse işlem yapma
     if (!isUserTurn()) {
-      console.log("Sıra kullanıcıda değil, çıkılıyor");
       showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
     }
 
     // Eğer raf seçili değilse hücre seçilemez
     if (selectedRackIndices.length === 0) {
-      console.log("Raf indeksleri boş, çıkılıyor");
       showTemporaryMessage("Önce rafınızdan bir harf seçin!");
       return;
     }
 
     // Seçilen raf indeksini al
     const rackIndex = selectedRackIndices[0];
-    console.log(`Seçilen raf indeksi: ${rackIndex}`);
 
-    // Kullanıcının rafını kontrol et
-    const userRack = getUserRack();
-    console.log(`Kullanıcı rafı: ${JSON.stringify(userRack)}`);
+    // Hücre var mı kontrol et (kritik güvenlik kontrolü)
+    if (!game.board[row] || game.board[row][col] === undefined) {
+      console.error(`Geçersiz hücre koordinatları: (${row}, ${col})`);
+      return;
+    }
 
-    // Seçilen harfi al
-    const selectedLetter = userRack[rackIndex];
-    console.log(`Seçilen harf: ${JSON.stringify(selectedLetter)}`);
-
-    // Hücre boş mu kontrol et
-    if (game.board[row][col].letter) {
-      console.log(`Hücre dolu: ${JSON.stringify(game.board[row][col])}`);
+    // Hücre dolu mu kontrol et
+    if (game.board[row][col] && game.board[row][col].letter) {
       showTemporaryMessage("Bu hücre zaten dolu!");
       return;
     }
 
     // İlk yerleştirme mi (merkez yıldız kontrolü)
     if (game.firstMove || game.centerRequired) {
-      console.log(
-        `İlk hamle kontrolü: firstMove=${game.firstMove}, centerRequired=${game.centerRequired}`
-      );
       if (row !== 7 || col !== 7) {
-        console.log(
-          `İlk hamle için merkez gerekli, fakat seçilen: ${row},${col}`
-        );
         showTemporaryMessage("İlk harf ortadaki yıldıza yerleştirilmelidir!");
         return;
       }
     } else if (selectedBoardCells.length === 0) {
       // İlk hamle değilse ve bu ilk seçilen hücreyse, mevcut bir harfe bitişik mi kontrol et
-      console.log("Bitişiklik kontrolü yapılıyor");
       const isAdjacent = checkIfAdjacentToExistingLetter(row, col, game.board);
-      console.log(`Bitişik mi: ${isAdjacent}`);
       if (!isAdjacent) {
         showTemporaryMessage("Harf mevcut bir kelimeye bitişik olmalıdır!");
         return;
@@ -469,9 +483,7 @@ export default function GameInterface({ gameId }) {
     } else {
       // Bir sonraki harf, mevcut seçili harflerle aynı doğrultuda olmalı
       if (selectedBoardCells.length >= 1) {
-        console.log("Yerleştirme geçerliliği kontrolü yapılıyor");
         const isValidPlacement = checkValidPlacement(row, col);
-        console.log(`Yerleştirme geçerli mi: ${isValidPlacement}`);
         if (!isValidPlacement) {
           showTemporaryMessage("Harfler aynı doğrultuda yerleştirilmelidir!");
           return;
@@ -481,34 +493,32 @@ export default function GameInterface({ gameId }) {
 
     // Yeni seçili hücre oluştur
     const newCell = { row, col, rackIndex };
-    console.log(`Yeni hücre oluşturuldu: ${JSON.stringify(newCell)}`);
 
     // Hücreyi seçili hücrelere ekle
     const newSelectedCells = [...selectedBoardCells, newCell];
-    console.log(`Yeni seçili hücreler: ${JSON.stringify(newSelectedCells)}`);
     setSelectedBoardCells(newSelectedCells);
 
     // Seçilen harfi raf seçiminden kaldır
-    console.log("Raf seçiminden kaldırılıyor");
     setSelectedRackIndices([]);
 
     // Yerleştirme yönünü belirle
     if (newSelectedCells.length === 2) {
-      console.log("Yerleştirme yönü belirleniyor");
       determineDirection(newSelectedCells);
     }
 
     // Oluşan kelimeyi kontrol et
-    console.log("Kelime kontrolü yapılıyor");
     checkWord(newSelectedCells);
 
-    // Debug için log
-    console.log(
-      `Fonksiyon tamamlandı - Hücre seçildi - Satır: ${row}, Sütun: ${col}, Raf İndeksi: ${rackIndex}`
-    );
+    console.log("Harf yerleştirildi:", { row, col, rackIndex });
   };
 
   const checkIfAdjacentToExistingLetter = (row, col, board) => {
+    // Tahta kontrolü
+    if (!board || !Array.isArray(board)) {
+      console.error("Geçersiz tahta verisi:", board);
+      return false;
+    }
+
     // Bitişik hücre yönleri (yukarı, aşağı, sol, sağ)
     const directions = [
       { dr: -1, dc: 0 }, // yukarı
@@ -524,8 +534,12 @@ export default function GameInterface({ gameId }) {
 
       // Tahta sınırlarını kontrol et
       if (newRow >= 0 && newRow < 15 && newCol >= 0 && newCol < 15) {
-        // Komşu hücrede harf var mı?
-        if (board[newRow][newCol].letter) {
+        // Komşu hücre var mı ve içinde harf var mı?
+        if (
+          board[newRow] &&
+          board[newRow][newCol] &&
+          board[newRow][newCol].letter
+        ) {
           return true;
         }
       }

@@ -62,14 +62,23 @@ export default function BoardCell({
   const { backgroundColor, description } = getCellStyle();
   const specialIcon = getSpecialIcon();
 
-  // Debug için harfi konsola yazdır
-  if (isTemporary && letter) {
-    console.log(`Geçici harf gösteriliyor: ${letter}`);
-  }
-
-  // ÖNEMLİ: Sadece dolu ve geçici olmayan hücrelere tıklanamaz
-  // Diğer tüm hücrelere tıklanabilir (boş hücreler ve geçici harfli hücreler)
+  // ÖNEMLİ DEĞİŞİKLİK: KRİTİK DÜZELTME
+  // Tüm hücrelerin tıklanabilir olmasını sağlıyoruz,
+  // sadece kalıcı harfi olan hücreler tıklanamaz (geçici değil)
   const isDisabled = letter !== null && !isTemporary;
+
+  // Tıklama işlemini takip etmek için debug log
+  const handleCellPress = () => {
+    console.log("BoardCell tıklandı: ", {
+      letter,
+      type,
+      isSelected,
+      isTemporary,
+    });
+    if (onPress) {
+      onPress(); // Üst bileşenden gelen tıklama işleyiciyi çağır
+    }
+  };
 
   return (
     <TouchableOpacity
@@ -80,7 +89,7 @@ export default function BoardCell({
         letter && !isTemporary && styles.filledCell,
         letter && isTemporary && styles.temporaryFilledCell,
       ]}
-      onPress={onPress}
+      onPress={handleCellPress}
       disabled={isDisabled}
       activeOpacity={0.5} // Daha belirgin tıklama geri bildirimi
     >
@@ -107,12 +116,15 @@ const styles = StyleSheet.create({
   cell: {
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 0.5,
-    borderColor: "#666", // Daha belirgin kenar
+    borderWidth: 1, // Daha belirgin kenar
+    borderColor: "#666",
+    padding: 0,
+    margin: 0,
   },
   selectedCell: {
     borderWidth: 2,
     borderColor: "#3f51b5", // Seçilen hücre kenarı mavi
+    backgroundColor: "#e8eaf6", // Açık mavi arka plan
   },
   filledCell: {
     backgroundColor: "#FFE4B5", // Doldurulmuş hücre rengi
