@@ -13,15 +13,49 @@ export default function GameBoard({
   selectedCells = [],
   onCellPress,
   showSpecials = false, // Debug modu için mayın ve ödülleri göster
-  getUserRack, // Harfleri getiren fonksiyon - bu parametreyi yolladığından emin ol
+  getUserRack, // Harfleri getiren fonksiyon
 }) {
   // Bir hücrenin seçili olup olmadığını kontrol et
   const isCellSelected = (row, col) => {
     return selectedCells.some((cell) => cell.row === row && cell.col === col);
   };
 
-  // Tahta satırları ve hücrelerini oluştur
+  // Seçili hücrenin harfini al
+  const getSelectedCellLetter = (row, col) => {
+    const selectedCell = selectedCells.find(
+      (cell) => cell.row === row && cell.col === col
+    );
 
+    if (!selectedCell || selectedCell.rackIndex === undefined) {
+      return null;
+    }
+
+    const userRack = getUserRack();
+
+    if (!userRack || !Array.isArray(userRack) || userRack.length === 0) {
+      return null;
+    }
+
+    const rackIndex = selectedCell.rackIndex;
+
+    if (rackIndex < 0 || rackIndex >= userRack.length) {
+      console.warn(
+        `Geçersiz raf indeksi: ${rackIndex}, raf uzunluğu: ${userRack.length}`
+      );
+      return null;
+    }
+
+    const letterObj = userRack[rackIndex];
+
+    if (!letterObj) {
+      return null;
+    }
+
+    // Harf nesne veya string olabilir
+    return typeof letterObj === "object" ? letterObj.letter : letterObj;
+  };
+
+  // Tahta satırları ve hücrelerini oluştur
   const renderBoard = () => {
     const rows = [];
 
@@ -80,17 +114,20 @@ const styles = StyleSheet.create({
   container: {
     alignItems: "center",
     justifyContent: "center",
-    padding: 10,
+    padding: 0,
+    margin: 0,
   },
   board: {
     width: BOARD_SIZE,
     height: BOARD_SIZE,
-    borderWidth: 1,
-    borderColor: "#000",
+    borderWidth: 2, // Daha belirgin kenar
+    borderColor: "#333", // Daha koyu kenar rengi
     backgroundColor: "#fff",
+    flexDirection: "column", // Dikey yerleşim
   },
   row: {
-    flexDirection: "row",
-    flex: 1,
+    flexDirection: "row", // Yatay yerleşim
+    flex: 1, // Her satır eşit yükseklikte
+    flexWrap: "nowrap", // Kaydırma olmasın
   },
 });

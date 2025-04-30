@@ -409,12 +409,9 @@ export default function GameInterface({ gameId }) {
   };
 
   // Hücre seçimi
+
   const handleCellPress = (row, col) => {
     console.log(`handleCellPress başladı - Satır: ${row}, Sütun: ${col}`);
-    console.log(`Kullanıcı sırası mı: ${isUserTurn()}`);
-    console.log(
-      `Seçili raf indeksleri: ${JSON.stringify(selectedRackIndices)}`
-    );
 
     if (!isUserTurn()) {
       console.log("Sıra kullanıcıda değil, çıkılıyor");
@@ -436,23 +433,15 @@ export default function GameInterface({ gameId }) {
     // Kullanıcının rafını kontrol et
     const userRack = getUserRack();
     console.log(`Kullanıcı rafı: ${JSON.stringify(userRack)}`);
-    console.log(`Seçilen harf: ${JSON.stringify(userRack[rackIndex])}`);
+
+    // Seçilen harfi al
+    const selectedLetter = userRack[rackIndex];
+    console.log(`Seçilen harf: ${JSON.stringify(selectedLetter)}`);
 
     // Hücre boş mu kontrol et
     if (game.board[row][col].letter) {
       console.log(`Hücre dolu: ${JSON.stringify(game.board[row][col])}`);
       showTemporaryMessage("Bu hücre zaten dolu!");
-      return;
-    }
-
-    // Hücre zaten seçili mi?
-    const alreadySelected = selectedBoardCells.some(
-      (cell) => cell.row === row && cell.col === col
-    );
-
-    if (alreadySelected) {
-      console.log("Hücre zaten seçili, çıkılıyor");
-      showTemporaryMessage("Bu hücre zaten seçili!");
       return;
     }
 
@@ -517,6 +506,44 @@ export default function GameInterface({ gameId }) {
     console.log(
       `Fonksiyon tamamlandı - Hücre seçildi - Satır: ${row}, Sütun: ${col}, Raf İndeksi: ${rackIndex}`
     );
+  };
+
+  const checkIfAdjacentToExistingLetter = (row, col, board) => {
+    // Bitişik hücre yönleri (yukarı, aşağı, sol, sağ)
+    const directions = [
+      { dr: -1, dc: 0 }, // yukarı
+      { dr: 1, dc: 0 }, // aşağı
+      { dr: 0, dc: -1 }, // sol
+      { dr: 0, dc: 1 }, // sağ
+    ];
+
+    // Her yönü kontrol et
+    for (const { dr, dc } of directions) {
+      const newRow = row + dr;
+      const newCol = col + dc;
+
+      // Tahta sınırlarını kontrol et
+      if (newRow >= 0 && newRow < 15 && newCol >= 0 && newCol < 15) {
+        // Komşu hücrede harf var mı?
+        if (board[newRow][newCol].letter) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  const determineDirection = (cells) => {
+    if (cells.length < 2) return;
+
+    const [cell1, cell2] = cells;
+
+    if (cell1.row === cell2.row) {
+      setPlacementDirection("horizontal");
+    } else if (cell1.col === cell2.col) {
+      setPlacementDirection("vertical");
+    }
   };
 
   // Geçerli yerleştirme kontrolü - Eksik fonksiyon!
@@ -958,15 +985,15 @@ export default function GameInterface({ gameId }) {
         </View>
       </View>
       {/* Oyun Tahtası */}
-      <ScrollView contentContainerStyle={styles.boardContainer}>
+      <View style={styles.boardContainer}>
         <GameBoard
           board={game.board}
           selectedCells={selectedBoardCells}
           onCellPress={handleCellPress}
           showSpecials={false}
-          getUserRack={() => getUserRack()} // Bu çok önemli! Fonksiyonu göndermek gerekiyor
+          getUserRack={() => getUserRack()} // Fonksiyon referansını doğru şekilde geçir
         />
-      </ScrollView>
+      </View>
 
       {/* Kullanıcı Ödülleri */}
       {userRewards.length > 0 && (
@@ -1174,8 +1201,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   boardContainer: {
-    padding: 10,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    padding: 5,
+    margin: 0,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
   },
   rewardsContainer: {
     padding: 10,

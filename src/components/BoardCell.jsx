@@ -67,6 +67,10 @@ export default function BoardCell({
     console.log(`Geçici harf gösteriliyor: ${letter}`);
   }
 
+  // ÖNEMLİ: Sadece dolu ve geçici olmayan hücrelere tıklanamaz
+  // Diğer tüm hücrelere tıklanabilir (boş hücreler ve geçici harfli hücreler)
+  const isDisabled = letter !== null && !isTemporary;
+
   return (
     <TouchableOpacity
       style={[
@@ -77,8 +81,8 @@ export default function BoardCell({
         letter && isTemporary && styles.temporaryFilledCell,
       ]}
       onPress={onPress}
-      // Dolu hücrelere basılma özelliğini düzenleme
-      disabled={letter !== null && !isTemporary}
+      disabled={isDisabled}
+      activeOpacity={0.5} // Daha belirgin tıklama geri bildirimi
     >
       {letter ? (
         // Harf içeren hücre
@@ -104,7 +108,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 0.5,
-    borderColor: "#cccccc",
+    borderColor: "#666", // Daha belirgin kenar
   },
   selectedCell: {
     borderWidth: 2,
