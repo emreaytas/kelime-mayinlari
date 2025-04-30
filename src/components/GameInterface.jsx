@@ -31,8 +31,6 @@ export default function GameInterface({ gameId }) {
   const [timerColor, setTimerColor] = useState("#333"); // Normal renk için varsayılan değer
   const [loading, setLoading] = useState(true);
   const [game, setGame] = useState(null);
-  const [selectedBoardCells, setSelectedBoardCells] = useState([]);
-  const [selectedRackIndices, setSelectedRackIndices] = useState([]);
   const [currentWord, setCurrentWord] = useState("");
   const [wordValid, setWordValid] = useState(false);
   const [earnedPoints, setEarnedPoints] = useState(0);
@@ -41,6 +39,8 @@ export default function GameInterface({ gameId }) {
   const [specialPopup, setSpecialPopup] = useState(null);
   const [confirmingAction, setConfirmingAction] = useState(false);
   const [remainingTime, setRemainingTime] = useState(null);
+  const [selectedRackIndices, setSelectedRackIndices] = useState([]);
+  const [selectedBoardCells, setSelectedBoardCells] = useState([]); // Değişken adı tutarlı olmalı,
 
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
@@ -292,19 +292,26 @@ export default function GameInterface({ gameId }) {
 
   const handleRackTileSelect = (index) => {
     if (!isUserTurn()) {
-      Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
+      showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
     }
 
-    const newSelectedIndices = [...selectedRackIndices];
+    // Zaten bir hücre seçiliyse, önce onu temizle
+    if (selectedBoardCells.length > 0) {
+      setSelectedBoardCells([]);
+    }
 
-    // Harf zaten seçili mi?
+    // Seçili rafları güncelle
+    const newSelectedIndices = [...selectedRackIndices];
     const indexPos = newSelectedIndices.indexOf(index);
+
     if (indexPos !== -1) {
       // Seçimi kaldır
       newSelectedIndices.splice(indexPos, 1);
     } else {
-      // Yeni seçim ekle
+      // Rafta birden fazla harf seçilmesini engelle - sadece tek harf seçimi izin ver
+      // Önceki seçili harfi temizle ve yeni harfi seç
+      newSelectedIndices.length = 0;
       newSelectedIndices.push(index);
     }
 
@@ -383,43 +390,38 @@ export default function GameInterface({ gameId }) {
   // Hücre seçimi
   const handleCellPress = (row, col) => {
     if (!isUserTurn()) {
-      Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
+      showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
     }
 
     // Önce bir harf seçilmiş olmalı
     if (selectedRackIndices.length === 0) {
-      Alert.alert("Uyarı", "Önce rafınızdan bir harf seçin!");
+      showTemporaryMessage("Önce rafınızdan bir harf seçin!");
       return;
     }
 
     // Hücre boş mu kontrol et
     if (game.board[row][col].letter) {
-      Alert.alert("Uyarı", "Bu hücre zaten dolu!");
+      showTemporaryMessage("Bu hücre zaten dolu!");
       return;
     }
 
-    // İlk yerleştirme mi kontrol et
-    const isFirstMove = !game.board.some((boardRow) =>
-      boardRow.some((cell) => cell.letter)
-    );
-
-    if (isFirstMove && (row !== 7 || col !== 7)) {
-      Alert.alert("Uyarı", "İlk harf ortadaki yıldıza yerleştirilmelidir!");
-      return;
-    }
-
-    // İlk hamle değilse, mevcut bir harfe bitişik mi kontrol et
-    if (!isFirstMove && selectedCells.length === 0) {
-      // Mevcut harflere bitişik mi?
-      const isAdjacent = checkIfAdjacentToExistingLetter(row, col);
+    // İlk yerleştirme mi kontrol et (merkez hücre kontrolü)
+    if (game.firstMove || game.centerRequired) {
+      if (row !== 7 || col !== 7) {
+        showTemporaryMessage("İlk harf ortadaki yıldıza yerleştirilmelidir!");
+        return;
+      }
+    } else if (selectedBoardCells.length === 0) {
+      // İlk hamle değilse ve bu ilk seçilen hücreyse, mevcut bir harfe bitişik mi kontrol et
+      const isAdjacent = checkIfAdjacentToExistingLetter(row, col, game.board);
       if (!isAdjacent) {
-        Alert.alert("Uyarı", "Harf mevcut bir kelimeye bitişik olmalıdır!");
+        showTemporaryMessage("Harf mevcut bir kelimeye bitişik olmalıdır!");
         return;
       }
     }
 
-    // Seçilen raf indeksi
+    // Seçilen raf indeksini al
     const rackIndex = selectedRackIndices[0];
 
     // Kullanıcının rafından harf bilgisini al
@@ -427,25 +429,17 @@ export default function GameInterface({ gameId }) {
     const letterObj = userRack[rackIndex];
     const letter = typeof letterObj === "object" ? letterObj.letter : letterObj;
 
-    // Yeni seçili hücreleri güncelle
-    const newSelectedCells = [...selectedCells, { row, col, rackIndex }];
-    setSelectedCells(newSelectedCells);
+    // Yeni seçili hücre oluştur
+    const newCell = { row, col, rackIndex };
 
-    // Geçici olarak harf yerleştirmeyi göster (sadece görsel olarak, henüz veritabanına kaydedilmez) sonra bunu da eklememiz lazım ama buraı önemli.
-    const boardCopy = JSON.parse(JSON.stringify(game.board));
-    boardCopy[row][col] = {
-      ...boardCopy[row][col],
-      letter: letter, // Harfi yerleştir
-      isTemporary: true, // Bu, henüz kaydedilmemiş, geçici bir yerleştirme olduğunu belirtir
-    };
+    // Eğer bu ilk seçilen hücre ise, onu ayarla
+    const newSelectedCells = [...selectedBoardCells, newCell];
+    setSelectedBoardCells(newSelectedCells);
 
-    // Burda BoardCell bileşenine boardCopy'yi gönderebilirsiniz ama gereksiz render'ı önlemek için
-    // seçili hücreleri takip etmek daha verimli olacaktır
+    // Seçilen harfi raf seçiminden kaldır
+    setSelectedRackIndices([]);
 
-    // Seçilen harfi kaldır
-    setSelectedRackIndices(selectedRackIndices.slice(1));
-
-    // Yerleştirme yönünü belirle (2 veya daha fazla harf olduğunda)
+    // Birden fazla hücre seçildiyse yön belirle
     if (newSelectedCells.length >= 2) {
       determineDirection(newSelectedCells);
     }
@@ -484,8 +478,33 @@ export default function GameInterface({ gameId }) {
     }
   };
 
-  // Raftaki harf seçimi
+  const checkIfAdjacentToExistingLetter = (row, col, board) => {
+    // Komşu hücrelerin koordinatları
+    const directions = [
+      { dr: -1, dc: 0 }, // yukarı
+      { dr: 1, dc: 0 }, // aşağı
+      { dr: 0, dc: -1 }, // sol
+      { dr: 0, dc: 1 }, // sağ
+    ];
 
+    // Her yönü kontrol et
+    for (const { dr, dc } of directions) {
+      const newRow = row + dr;
+      const newCol = col + dc;
+
+      // Tahta sınırları içinde mi?
+      if (newRow >= 0 && newRow < 15 && newCol >= 0 && newCol < 15) {
+        // Komşu hücrede harf var mı?
+        if (board[newRow][newCol].letter) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  // Raftaki harf seçimi
   const handleRackTilePress = (index) => {
     if (!isUserTurn()) {
       Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
@@ -516,12 +535,15 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Hücreleri sırala
+    // Hücreleri sırala (yön belirlendiyse ona göre)
     const sortedCells = [...cells].sort((a, b) => {
       if (placementDirection === "horizontal") {
         return a.col - b.col;
+      } else if (placementDirection === "vertical") {
+        return a.row - b.row;
       }
-      return a.row - b.row;
+      // Varsayılan sıralama (yön belirlenemediyse)
+      return 0;
     });
 
     // Kelimeyi oluştur
@@ -533,66 +555,22 @@ export default function GameInterface({ gameId }) {
       const letterObj = rack[rackIndex];
       const letter =
         typeof letterObj === "object" ? letterObj.letter : letterObj;
-
       word += letter === "JOKER" ? "*" : letter;
     });
 
     setCurrentWord(word);
 
     // Kelimenin geçerliliğini kontrol et
-    const isValid = validateWord(word);
+    const isValid = validateWord(word.toLowerCase());
     setWordValid(isValid);
 
     // Puanları hesapla
     if (isValid) {
+      // Basit bir hesaplama - gerçek uygulamada daha karmaşık bir mantık kullanabilirsiniz
       const points = calculateWordPoints(sortedCells);
       setEarnedPoints(points);
     } else {
       setEarnedPoints(0);
-    }
-  };
-
-  // Kelime puanlarını hesapla
-  const calculateWordPoints = (cells) => {
-    // Örnek bir puanlama fonksiyonu
-    // Gerçek puanlama mantığınızı buraya ekleyebilirsiniz
-    return cells.length * 5; // Her harf için 5 puan
-  };
-
-  // Kelimeyi onayla
-  const confirmWord = async () => {
-    if (!isUserTurn()) {
-      Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
-      return;
-    }
-
-    if (!wordValid) {
-      Alert.alert("Uyarı", "Geçerli bir kelime oluşturun!");
-      return;
-    }
-
-    try {
-      setConfirmingAction(true);
-
-      // Kelimeyi yerleştir
-      const result = await placeWord(gameId, selectedCells);
-
-      // Özel etkileri göster
-      if (result.effects) {
-        showEffectsPopup(result.effects);
-      }
-
-      // Ödülleri göster
-      if (result.rewards && result.rewards.length > 0) {
-        showRewardsPopup(result.rewards);
-      }
-
-      // Seçimleri sıfırla
-      resetSelections();
-    } catch (error) {
-      Alert.alert("Hata", error.message || "Hamle yapılırken bir sorun oluştu");
-    } finally {
-      setConfirmingAction(false);
     }
   };
 
@@ -650,7 +628,8 @@ export default function GameInterface({ gameId }) {
 
   // Tüm seçimleri sıfırla
   const resetSelections = () => {
-    setSelectedBoardCells([]); // setSelectedCells yerine setSelectedBoardCells    setSelectedRackIndices([]);
+    setSelectedBoardCells([]);
+    setSelectedRackIndices([]);
     setPlacementDirection(null);
     setCurrentWord("");
     setWordValid(false);
@@ -921,9 +900,9 @@ export default function GameInterface({ gameId }) {
       <ScrollView contentContainerStyle={styles.boardContainer}>
         <GameBoard
           board={game.board}
-          selectedCells={selectedBoardCells} // selectedCells yerine selectedBoardCells
+          selectedCells={selectedBoardCells}
           onCellPress={handleCellPress}
-          showSpecials={false}
+          showSpecials={false} // Mayın ve ödülleri gösterme
         />
       </ScrollView>
 
@@ -966,9 +945,9 @@ export default function GameInterface({ gameId }) {
       {/* Harf Rafı */}
       <View style={styles.rackContainer}>
         <LetterRack
-          letters={userRack}
+          letters={getUserRack()}
           selectedIndices={selectedRackIndices}
-          onTilePress={handleRackTileSelect} // Fonksiyon adını buraya uygun hale getirin
+          onTilePress={handleRackTileSelect}
         />
       </View>
 

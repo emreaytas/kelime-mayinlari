@@ -252,18 +252,23 @@ export const createGameBoard = () => {
 export const generateLetterPool = () => {
   const letterPool = [];
 
-  // Her harften gerekli sayıda ekle
+  // Her harften belirlenen sayıda ekle
   Object.entries(letterCounts).forEach(([letter, count]) => {
     for (let i = 0; i < count; i++) {
       letterPool.push({
         letter,
-        points: letterValues[letter],
+        points: letterValues[letter] || 0,
       });
     }
   });
 
-  // Havuzu karıştır
-  return shuffleArray(letterPool);
+  // Havuzu karıştır (Fisher-Yates algoritması)
+  for (let i = letterPool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [letterPool[i], letterPool[j]] = [letterPool[j], letterPool[i]];
+  }
+
+  return letterPool;
 };
 
 // Harfleri oyunculara dağıt

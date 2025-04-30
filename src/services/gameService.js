@@ -311,6 +311,7 @@ export const createNewGame = async (
 
     // Rastgele başlangıç kelimesini oluştur ve yerleştir
     const gameWithInitialWord = setupInitialGame(initialGameData);
+
     // Firebase'e oyun verisini kaydet
     await set(newGameRef, gameWithInitialWord);
 
@@ -409,10 +410,6 @@ export const placeWord = async (gameId, placedCells) => {
     const boardCopy = JSON.parse(JSON.stringify(game.board));
 
     // Harfleri yerleştir
-    let word = "";
-    const cellTypes = [];
-
-    // Harfleri tahtaya yerleştir
     placedCells.forEach((cell) => {
       const { row, col, rackIndex } = cell;
       // Harfi kullanıcının rafından al
@@ -425,6 +422,7 @@ export const placeWord = async (gameId, placedCells) => {
     });
 
     // Kelimeyi oluştur (gösterim amaçlı)
+    let word = "";
     placedCells.forEach((cell) => {
       const { rackIndex } = cell;
       const letterObj = userRack[rackIndex];
@@ -434,44 +432,113 @@ export const placeWord = async (gameId, placedCells) => {
     });
 
     // Kelime kontrolü
-    if (!validateWord(word)) {
+    if (!validateWord(word.toLowerCase())) {
       throw new Error("Geçersiz kelime");
     }
 
-    // Puanları hesapla - gerçek uygulamada daha karmaşık bir mantık kullanılabilir
-    let points = placedCells.length * 5; // Basit bir hesaplama
+    // Puanları hesapla
+    let points = calculateWordPoints(placedCells, boardCopy, userRack);
 
-    // Mayın/ödül kontrolü - burada maalesef detaylı implementasyon yapamıyoruz
-    const effects = {}; // Gösterim amaçlı
-    const rewards = []; // Gösterim amaçlı
+    // Mayın/ödül kontrolü - burada basit bir kontrol yapıyoruz
+    const effects = {};
+    const rewards = [];
 
-    // Raf kopyası oluştur
+    // Her hücre için mayın/ödül kontrolü
+    placedCells.forEach((cell) => {
+      const { row, col } = cell;
+      const special = boardCopy[row][col].special;
+
+      if (special) {
+        // Mayın etkileri
+        if (special === "PuanBolunmesi") {
+          effects.pointDivision = true;
+          points = Math.round(points * 0.3); // %30'unu al
+        } else if (special === "PuanTransferi") {
+          effects.pointTransfer = true;
+          const opponentPoints = points;
+          points = -points; // Oyuncudan puan düş
+
+          // Rakibe puan ekle
+          if (isPlayer1) {
+            game.player2.score = (game.player2.score || 0) + opponentPoints;
+          } else {
+            game.player1.score = (game.player1.score || 0) + opponentPoints;
+          }
+        } else if (special === "HarfKaybi") {
+          effects.letterLoss = true;
+          // Tüm harfler değiştirilecek
+        } else if (special === "EkstraHamleEngeli") {
+          effects.moveBlockade = true;
+          // Özel hücre etkilerini iptal et
+          points = calculateRawPoints(placedCells, userRack);
+        } else if (special === "KelimeIptali") {
+          effects.wordCancellation = true;
+          points = 0; // Puan yok
+        }
+
+        // Ödül etkileri
+        if (
+          special === "BolgeYasagi" ||
+          special === "HarfYasagi" ||
+          special === "EkstraHamleJokeri"
+        ) {
+          rewards.push(special);
+
+          // Oyuncunun ödüllerine ekle
+          if (isPlayer1) {
+            game.player1Rewards = [...(game.player1Rewards || []), special];
+          } else {
+            game.player2Rewards = [...(game.player2Rewards || []), special];
+          }
+        }
+
+        // Özel hücreyi kullanıldı olarak işaretle
+        boardCopy[row][col].special = null;
+      }
+    });
+
+    // ÖNEMLİ: Kullanılan harflerin yerine yeni harf verilmesi
+
+    // 1. Kullanıcının mevcut rafını kopyala
     let userRackCopy = [...userRack];
 
-    // Kullanılan harfleri raftan çıkar
+    // 2. Kullanılan harflerin indekslerini büyükten küçüğe sırala (doğru silme için)
     const usedIndices = placedCells
       .map((cell) => cell.rackIndex)
       .sort((a, b) => b - a);
 
+    // 3. Kullanılan harfleri raftan çıkar
     usedIndices.forEach((index) => {
       userRackCopy.splice(index, 1);
     });
 
-    // Harf havuzundan yeni harfler çek
-    const neededLetters = Math.min(
+    // Harf Kaybı mayını etkisini uygula
+    if (effects.letterLoss) {
+      // Tüm harfleri havuza geri koy
+      game.letterPool = [...game.letterPool, ...userRackCopy];
+      // Rafı temizle
+      userRackCopy = [];
+    }
+
+    // 4. Kaç yeni harf gerektiğini belirle
+    const neededLetterCount = Math.min(
       7 - userRackCopy.length,
       game.letterPool.length
     );
 
-    const newLetters = game.letterPool.slice(0, neededLetters);
-    const remainingPool = game.letterPool.slice(neededLetters);
+    // 5. Harf havuzundan yeni harfleri al
+    const newLetters = game.letterPool.slice(0, neededLetterCount);
 
+    // 6. Kalan harf havuzunu güncelle
+    const updatedLetterPool = game.letterPool.slice(neededLetterCount);
+
+    // 7. Kullanıcının rafına yeni harfleri ekle
     userRackCopy = [...userRackCopy, ...newLetters];
 
     // Oyun verilerini güncelle
     const updates = {
       board: boardCopy,
-      letterPool: remainingPool,
+      letterPool: updatedLetterPool,
       lastMoveTime: Date.now(),
       turnPlayer:
         game.player1.id === userId ? game.player2.id : game.player1.id,
@@ -480,19 +547,58 @@ export const placeWord = async (gameId, placedCells) => {
       consecutivePasses: 0, // Pas geçme sayacını sıfırla
     };
 
-    // Puanları güncelle - DÜZELTME: Nokta içeren yollar yerine iç içe obje kullan
+    // Puanları ve oyuncunun yeni rafını güncelle
     if (isPlayer1) {
       updates.player1 = {
         ...game.player1,
         score: (game.player1.score || 0) + points,
       };
       updates.player1Rack = userRackCopy;
+
+      // Ödülleri güncelle
+      if (rewards.length > 0) {
+        updates.player1Rewards = game.player1Rewards || [];
+        rewards.forEach((reward) => {
+          updates.player1Rewards.push(reward);
+        });
+      }
     } else {
       updates.player2 = {
         ...game.player2,
         score: (game.player2.score || 0) + points,
       };
       updates.player2Rack = userRackCopy;
+
+      // Ödülleri güncelle
+      if (rewards.length > 0) {
+        updates.player2Rewards = game.player2Rewards || [];
+        rewards.forEach((reward) => {
+          updates.player2Rewards.push(reward);
+        });
+      }
+    }
+
+    // Puan transferi varsa rakibin puanını güncelle
+    if (effects.pointTransfer) {
+      if (isPlayer1) {
+        updates.player2 = {
+          ...game.player2,
+          score: (game.player2.score || 0) + Math.abs(points),
+        };
+      } else {
+        updates.player1 = {
+          ...game.player1,
+          score: (game.player1.score || 0) + Math.abs(points),
+        };
+      }
+    }
+
+    // Oyun bitişini kontrol et - Eğer bir oyuncunun rafındaki tüm harfler biterse
+    if (userRackCopy.length === 0 && updatedLetterPool.length === 0) {
+      updates.status = "completed";
+      updates.completedAt = Date.now();
+      updates.reason = "allLettersUsed";
+      updates.winner = userId;
     }
 
     // Firebase güncelle
@@ -504,11 +610,70 @@ export const placeWord = async (gameId, placedCells) => {
       effects,
       rewards,
       nextPlayer: updates.turnPlayer,
+      gameEnded: updates.status === "completed",
     };
   } catch (error) {
     console.error("Place word error:", error);
     throw error;
   }
+};
+
+export const calculateWordPoints = (placedCells, board, rack) => {
+  let totalPoints = 0;
+  let wordMultiplier = 1;
+
+  placedCells.forEach((cell) => {
+    const { row, col, rackIndex } = cell;
+    const letterObj = rack[rackIndex];
+
+    // Harfin puan değerini al
+    let letterPoints = 0;
+    if (typeof letterObj === "object") {
+      letterPoints = letterObj.points || 0;
+    } else if (typeof letterObj === "string") {
+      letterPoints = letterValues[letterObj] || 0;
+    }
+
+    // Özel hücre çarpanlarını uygula
+    const cellType = board[row][col].type;
+    if (cellType === "H2") {
+      letterPoints *= 2; // Harf puanı 2 katı
+    } else if (cellType === "H3") {
+      letterPoints *= 3; // Harf puanı 3 katı
+    } else if (cellType === "K2") {
+      wordMultiplier *= 2; // Kelime puanı 2 katı
+    } else if (cellType === "K3") {
+      wordMultiplier *= 3; // Kelime puanı 3 katı
+    }
+
+    totalPoints += letterPoints;
+  });
+
+  // Kelime çarpanını uygula
+  totalPoints *= wordMultiplier;
+
+  return totalPoints;
+};
+
+export const calculateRawPoints = (placedCells, rack) => {
+  let totalPoints = 0;
+
+  placedCells.forEach((cell) => {
+    const { rackIndex } = cell;
+    const letterObj = rack[rackIndex];
+
+    // Harfin puan değerini al
+    let letterPoints = 0;
+    if (typeof letterObj === "object") {
+      letterPoints = letterObj.points || 0;
+    } else if (typeof letterObj === "string") {
+      letterPoints = letterValues[letterObj] || 0;
+    }
+
+    totalPoints += letterPoints;
+  });
+
+  return totalPoints;
 };
 
 // Pas geç
@@ -538,7 +703,7 @@ export const passTurn = async (gameId) => {
 
     // Her iki oyuncu da pas geçtiyse (ardışık 2 pas)
     if (updates.consecutivePasses >= 2) {
-      updates.status = "completed";
+      updates.status = "completed"; // art arda pas olursa oyun biter berabere.
       updates.completedAt = Date.now();
       updates.reason = "pass";
     }
@@ -564,6 +729,7 @@ export const surrender = async (gameId) => {
     }
 
     await endGame(gameId, "surrender");
+
     return { success: true };
   } catch (error) {
     console.error("Surrender error:", error);
