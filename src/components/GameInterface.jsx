@@ -83,6 +83,14 @@ export default function GameInterface({ gameId }) {
     }
   }, [game]);
 
+  useEffect(() => {
+    console.log("selectedBoardCells değişti:", selectedBoardCells);
+  }, [selectedBoardCells]);
+
+  useEffect(() => {
+    console.log("selectedRackIndices değişti:", selectedRackIndices);
+  }, [selectedRackIndices]);
+
   // Kullanıcı ve oyun verilerini yükle
   useEffect(() => {
     // Oyun ID'si var mı kontrol et
@@ -264,14 +272,18 @@ export default function GameInterface({ gameId }) {
   const getUserRack = () => {
     if (!game || !auth.currentUser) return [];
 
-    const isPlayer1 = auth.currentUser.uid === game.player1.id;
+    const isPlayer1 = auth.currentUser.uid === game.player1?.id;
     const rack = isPlayer1 ? game.player1Rack : game.player2Rack;
 
-    // Debug için raf kontrolü
-    console.log("Current rack:", rack);
+    // Raf verilerinin güvenlik kontrolü
+    if (!rack || !Array.isArray(rack)) {
+      console.warn("Kullanıcı rafı bulunamadı veya geçersiz:", rack);
+      return [];
+    }
 
     return rack;
   };
+
   const isUserTurn = () => {
     return game && auth.currentUser && game.turnPlayer === auth.currentUser.uid;
   };
@@ -398,22 +410,37 @@ export default function GameInterface({ gameId }) {
 
   // Hücre seçimi
   const handleCellPress = (row, col) => {
+    console.log(`handleCellPress başladı - Satır: ${row}, Sütun: ${col}`);
+    console.log(`Kullanıcı sırası mı: ${isUserTurn()}`);
+    console.log(
+      `Seçili raf indeksleri: ${JSON.stringify(selectedRackIndices)}`
+    );
+
     if (!isUserTurn()) {
+      console.log("Sıra kullanıcıda değil, çıkılıyor");
       showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
     }
 
     // Eğer raf seçili değilse hücre seçilemez
     if (selectedRackIndices.length === 0) {
+      console.log("Raf indeksleri boş, çıkılıyor");
       showTemporaryMessage("Önce rafınızdan bir harf seçin!");
       return;
     }
 
     // Seçilen raf indeksini al
     const rackIndex = selectedRackIndices[0];
+    console.log(`Seçilen raf indeksi: ${rackIndex}`);
+
+    // Kullanıcının rafını kontrol et
+    const userRack = getUserRack();
+    console.log(`Kullanıcı rafı: ${JSON.stringify(userRack)}`);
+    console.log(`Seçilen harf: ${JSON.stringify(userRack[rackIndex])}`);
 
     // Hücre boş mu kontrol et
     if (game.board[row][col].letter) {
+      console.log(`Hücre dolu: ${JSON.stringify(game.board[row][col])}`);
       showTemporaryMessage("Bu hücre zaten dolu!");
       return;
     }
@@ -424,19 +451,28 @@ export default function GameInterface({ gameId }) {
     );
 
     if (alreadySelected) {
+      console.log("Hücre zaten seçili, çıkılıyor");
       showTemporaryMessage("Bu hücre zaten seçili!");
       return;
     }
 
     // İlk yerleştirme mi (merkez yıldız kontrolü)
     if (game.firstMove || game.centerRequired) {
+      console.log(
+        `İlk hamle kontrolü: firstMove=${game.firstMove}, centerRequired=${game.centerRequired}`
+      );
       if (row !== 7 || col !== 7) {
+        console.log(
+          `İlk hamle için merkez gerekli, fakat seçilen: ${row},${col}`
+        );
         showTemporaryMessage("İlk harf ortadaki yıldıza yerleştirilmelidir!");
         return;
       }
     } else if (selectedBoardCells.length === 0) {
       // İlk hamle değilse ve bu ilk seçilen hücreyse, mevcut bir harfe bitişik mi kontrol et
+      console.log("Bitişiklik kontrolü yapılıyor");
       const isAdjacent = checkIfAdjacentToExistingLetter(row, col, game.board);
+      console.log(`Bitişik mi: ${isAdjacent}`);
       if (!isAdjacent) {
         showTemporaryMessage("Harf mevcut bir kelimeye bitişik olmalıdır!");
         return;
@@ -444,7 +480,9 @@ export default function GameInterface({ gameId }) {
     } else {
       // Bir sonraki harf, mevcut seçili harflerle aynı doğrultuda olmalı
       if (selectedBoardCells.length >= 1) {
+        console.log("Yerleştirme geçerliliği kontrolü yapılıyor");
         const isValidPlacement = checkValidPlacement(row, col);
+        console.log(`Yerleştirme geçerli mi: ${isValidPlacement}`);
         if (!isValidPlacement) {
           showTemporaryMessage("Harfler aynı doğrultuda yerleştirilmelidir!");
           return;
@@ -454,79 +492,86 @@ export default function GameInterface({ gameId }) {
 
     // Yeni seçili hücre oluştur
     const newCell = { row, col, rackIndex };
+    console.log(`Yeni hücre oluşturuldu: ${JSON.stringify(newCell)}`);
 
     // Hücreyi seçili hücrelere ekle
     const newSelectedCells = [...selectedBoardCells, newCell];
+    console.log(`Yeni seçili hücreler: ${JSON.stringify(newSelectedCells)}`);
     setSelectedBoardCells(newSelectedCells);
 
     // Seçilen harfi raf seçiminden kaldır
+    console.log("Raf seçiminden kaldırılıyor");
     setSelectedRackIndices([]);
 
     // Yerleştirme yönünü belirle
     if (newSelectedCells.length === 2) {
+      console.log("Yerleştirme yönü belirleniyor");
       determineDirection(newSelectedCells);
     }
 
     // Oluşan kelimeyi kontrol et
+    console.log("Kelime kontrolü yapılıyor");
     checkWord(newSelectedCells);
 
     // Debug için log
     console.log(
-      `Hücre seçildi - Satır: ${row}, Sütun: ${col}, Raf İndeksi: ${rackIndex}`
+      `Fonksiyon tamamlandı - Hücre seçildi - Satır: ${row}, Sütun: ${col}, Raf İndeksi: ${rackIndex}`
     );
-    console.log("Seçili hücreler:", JSON.stringify(newSelectedCells));
   };
 
-  // Yerleştirme yönünü belirle
-  const determineDirection = (cells) => {
-    if (cells.length < 2) {
-      setPlacementDirection(null);
-      return;
+  // Geçerli yerleştirme kontrolü - Eksik fonksiyon!
+  const checkValidPlacement = (row, col) => {
+    if (selectedBoardCells.length === 0) {
+      return true; // İlk harf için geçerli
     }
 
-    const firstCell = cells[0];
-    const lastCell = cells[cells.length - 1];
+    // Son yerleştirilen hücre ile yeni hücre arasındaki yön kontrolü
+    const firstCell = selectedBoardCells[0];
 
-    if (firstCell.row === lastCell.row) {
-      setPlacementDirection("horizontal");
-    } else if (firstCell.col === lastCell.col) {
-      setPlacementDirection("vertical");
-    } else {
-      // Çapraz yerleştirme geçersiz
-      Alert.alert(
-        "Uyarı",
-        "Harfler yatay veya dikey olarak yerleştirilmelidir!"
-      );
+    // Yatay yerleştirme
+    if (firstCell.row === row) {
+      // Eğer yön belirlenmişse ve dikey ise, geçersiz
+      if (placementDirection === "vertical") {
+        return false;
+      }
 
-      // Son eklenen hücreyi kaldır
-      setSelectedBoardCells(cells.slice(0, -1));
-      setSelectedRackIndices([cells[cells.length - 1].rackIndex]);
-    }
-  };
+      // Sütunlar sıralı olmalı (arada boşluk olmamalı)
+      const cols = selectedBoardCells.map((cell) => cell.col);
+      cols.push(col); // Yeni sütunu ekle
+      cols.sort((a, b) => a - b); // Sırala
 
-  const checkIfAdjacentToExistingLetter = (row, col, board) => {
-    // Komşu hücrelerin koordinatları
-    const directions = [
-      { dr: -1, dc: 0 }, // yukarı
-      { dr: 1, dc: 0 }, // aşağı
-      { dr: 0, dc: -1 }, // sol
-      { dr: 0, dc: 1 }, // sağ
-    ];
-
-    // Her yönü kontrol et
-    for (const { dr, dc } of directions) {
-      const newRow = row + dr;
-      const newCol = col + dc;
-
-      // Tahta sınırları içinde mi?
-      if (newRow >= 0 && newRow < 15 && newCol >= 0 && newCol < 15) {
-        // Komşu hücrede harf var mı?
-        if (board[newRow][newCol].letter) {
-          return true;
+      // Ardışık olup olmadığını kontrol et
+      for (let i = 1; i < cols.length; i++) {
+        if (cols[i] - cols[i - 1] !== 1) {
+          return false;
         }
       }
+
+      return true;
+    }
+    // Dikey yerleştirme
+    else if (firstCell.col === col) {
+      // Eğer yön belirlenmişse ve yatay ise, geçersiz
+      if (placementDirection === "horizontal") {
+        return false;
+      }
+
+      // Satırlar sıralı olmalı (arada boşluk olmamalı)
+      const rows = selectedBoardCells.map((cell) => cell.row);
+      rows.push(row); // Yeni satırı ekle
+      rows.sort((a, b) => a - b); // Sırala
+
+      // Ardışık olup olmadığını kontrol et
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i] - rows[i - 1] !== 1) {
+          return false;
+        }
+      }
+
+      return true;
     }
 
+    // Ne yatay ne dikey değil
     return false;
   };
 
@@ -587,6 +632,40 @@ export default function GameInterface({ gameId }) {
   // Hamleyi iptal et
   const cancelMove = () => {
     resetSelections();
+  };
+
+  const getSelectedCellLetter = (row, col) => {
+    const selectedCell = selectedBoardCells.find(
+      (cell) => cell.row === row && cell.col === col
+    );
+
+    if (!selectedCell || selectedCell.rackIndex === undefined) {
+      return null;
+    }
+
+    const userRack = getUserRack();
+
+    if (!userRack || !Array.isArray(userRack) || userRack.length === 0) {
+      return null;
+    }
+
+    const rackIndex = selectedCell.rackIndex;
+
+    if (rackIndex < 0 || rackIndex >= userRack.length) {
+      console.warn(
+        `Geçersiz raf indeksi: ${rackIndex}, raf uzunluğu: ${userRack.length}`
+      );
+      return null;
+    }
+
+    const letterObj = userRack[rackIndex];
+
+    if (!letterObj) {
+      return null;
+    }
+
+    // Harf nesne veya string olabilir
+    return typeof letterObj === "object" ? letterObj.letter : letterObj;
   };
 
   // Tüm seçimleri sıfırla
@@ -885,7 +964,7 @@ export default function GameInterface({ gameId }) {
           selectedCells={selectedBoardCells}
           onCellPress={handleCellPress}
           showSpecials={false}
-          getUserRack={getUserRack} // Bu parametre çok önemli, bunu unutma!
+          getUserRack={() => getUserRack()} // Bu çok önemli! Fonksiyonu göndermek gerekiyor
         />
       </ScrollView>
 

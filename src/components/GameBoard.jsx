@@ -20,43 +20,8 @@ export default function GameBoard({
     return selectedCells.some((cell) => cell.row === row && cell.col === col);
   };
 
-  // Seçili hücreden harfi al
-  const getSelectedCellLetter = (row, col) => {
-    const selectedCell = selectedCells.find(
-      (cell) => cell.row === row && cell.col === col
-    );
-
-    if (!selectedCell || selectedCell.rackIndex === undefined) {
-      return null;
-    }
-
-    const userRack = getUserRack ? getUserRack() : [];
-
-    if (!userRack || !Array.isArray(userRack) || userRack.length === 0) {
-      return null;
-    }
-
-    if (
-      selectedCell.rackIndex < 0 ||
-      selectedCell.rackIndex >= userRack.length
-    ) {
-      console.warn(
-        `Geçersiz raf indeksi: ${selectedCell.rackIndex}, raf uzunluğu: ${userRack.length}`
-      );
-      return null;
-    }
-
-    const letterObj = userRack[selectedCell.rackIndex];
-
-    if (!letterObj) {
-      return null;
-    }
-
-    // Harf nesne veya string olabilir
-    return typeof letterObj === "object" ? letterObj.letter : letterObj;
-  };
-
   // Tahta satırları ve hücrelerini oluştur
+
   const renderBoard = () => {
     const rows = [];
 
@@ -77,11 +42,6 @@ export default function GameBoard({
           if (selectedLetter) {
             displayLetter = selectedLetter;
             isTemporary = true;
-
-            // Debug için log
-            console.log(
-              `Geçici harf yerleştirildi - Satır: ${i}, Sütun: ${j}, Harf: ${displayLetter}`
-            );
           }
         }
 
