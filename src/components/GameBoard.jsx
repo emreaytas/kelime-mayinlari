@@ -13,12 +13,34 @@ export default function GameBoard({
   selectedCells = [],
   onCellPress,
   showSpecials = false, // Debug modu için mayın ve ödülleri göster
+  getUserRack = () => [], // Harfleri getiren fonksiyon
 }) {
-  console.log("GameBoard çalıştı. ");
-
   // Bir hücrenin seçili olup olmadığını kontrol et
   const isCellSelected = (row, col) => {
     return selectedCells.some((cell) => cell.row === row && cell.col === col);
+  };
+
+  // Seçili hücreden harfi al
+  const getSelectedCellLetter = (row, col) => {
+    const selectedCell = selectedCells.find(
+      (cell) => cell.row === row && cell.col === col
+    );
+
+    if (selectedCell) {
+      const userRack = getUserRack();
+      if (
+        userRack &&
+        userRack.length > 0 &&
+        selectedCell.rackIndex !== undefined
+      ) {
+        const letterObj = userRack[selectedCell.rackIndex];
+        if (letterObj) {
+          return typeof letterObj === "object" ? letterObj.letter : letterObj;
+        }
+      }
+    }
+
+    return null;
   };
 
   // Tahta satırları ve hücrelerini oluştur
@@ -31,21 +53,16 @@ export default function GameBoard({
 
       for (let j = 0; j < 15; j++) {
         const cellData = board[i][j] || {};
+        const isSelected = isCellSelected(i, j);
 
-        // Bu hücre için seçili bir kelime var mı kontrol et
-        const selectedCell = selectedCells.find(
-          (cell) => cell.row === i && cell.col === j
-        );
-
-        // Eğer bu hücre seçiliyse, geçici harfi göster
+        // Varsayılan olarak hücredeki kalıcı harfi göster
         let displayLetter = cellData.letter;
         let isTemporary = false;
 
-        if (selectedCell) {
-          const userRack = getUserRack(); // Bu fonksiyonu props olarak almalısınız
-          const letterObj = userRack[selectedCell.rackIndex];
-          displayLetter =
-            typeof letterObj === "object" ? letterObj.letter : letterObj;
+        // Eğer bu hücre şu anda seçili ise, geçici harfi göster
+        const selectedLetter = getSelectedCellLetter(i, j);
+        if (isSelected && selectedLetter) {
+          displayLetter = selectedLetter;
           isTemporary = true;
         }
 
@@ -56,7 +73,7 @@ export default function GameBoard({
             points={cellData.points}
             type={cellData.type}
             special={showSpecials ? cellData.special : null}
-            isSelected={!!selectedCell}
+            isSelected={isSelected}
             isTemporary={isTemporary}
             onPress={() => onCellPress && onCellPress(i, j)}
           />

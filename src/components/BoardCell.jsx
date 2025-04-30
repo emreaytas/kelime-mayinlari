@@ -22,7 +22,6 @@ export default function BoardCell({
   isTemporary,
   onPress,
 }) {
-  console.log("BoardCell çalıştı.");
   // Hücre tipi, renk ve açıklaması
   const getCellStyle = () => {
     switch (type) {
@@ -73,7 +72,8 @@ export default function BoardCell({
         letter && isTemporary && styles.temporaryFilledCell,
       ]}
       onPress={onPress}
-      disabled={letter !== null && !isTemporary} // Kalıcı dolu hücrelere basılamaz
+      // Önemli: Kalıcı dolu hücrelere basılabilmesini engelliyoruz, ancak seçilmiş hücrelere basılabilmesi gerekiyor
+      disabled={letter !== null && !isTemporary && !isSelected}
     >
       {letter ? (
         // Harf içeren hücre
