@@ -17,8 +17,9 @@ export default function GameScreen() {
   const { gameId } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-
+  console.log("export default function GameScreen");
   useEffect(() => {
+    console.log("export default function GameScreen useEffect...");
     // Auth durumunu dinle
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
