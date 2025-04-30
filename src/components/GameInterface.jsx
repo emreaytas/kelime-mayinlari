@@ -265,14 +265,16 @@ export default function GameInterface({ gameId }) {
     if (!game || !auth.currentUser) return [];
 
     const isPlayer1 = auth.currentUser.uid === game.player1.id;
-    return isPlayer1 ? game.player1Rack : game.player2Rack;
-  };
+    const rack = isPlayer1 ? game.player1Rack : game.player2Rack;
 
-  // Kullanıcının sırası mı?
+    // Debug için raf kontrolü
+    console.log("Current rack:", rack);
+
+    return rack;
+  };
   const isUserTurn = () => {
     return game && auth.currentUser && game.turnPlayer === auth.currentUser.uid;
   };
-
   // Kullanıcının ödüllerini al
   const getUserRewards = () => {
     if (!game || !auth.currentUser) return [];
@@ -288,25 +290,26 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Zaten bir hücre seçiliyse, önce onu temizle
-    if (selectedBoardCells.length > 0) {
-      return; // Tahtada seçim varken raftaki harfler değiştirilemez
-    }
-
+    // ÖNEMLİ: Bu kısmı değiştir - aynı zamanda bir raf ve bir tahta hücresi seçilebilir olmalı
     // Seçili rafları güncelle
     const newSelectedIndices = [...selectedRackIndices];
     const indexPos = newSelectedIndices.indexOf(index);
 
     if (indexPos !== -1) {
-      // Seçimi kaldır
+      // Eğer bu raf zaten seçiliyse, seçimi kaldır
       newSelectedIndices.splice(indexPos, 1);
     } else {
-      // Rafta birden fazla harf seçilmesini engelle - sadece tek harf seçimi izin ver
-      newSelectedIndices.length = 0;
+      // Raf seçimini güncelle (tek bir harf seçilebilir)
+      newSelectedIndices.length = 0; // Diğer tüm seçimleri temizle
       newSelectedIndices.push(index);
     }
 
     setSelectedRackIndices(newSelectedIndices);
+
+    // Aktif seçim hakkında bir geri bildirim göster
+    if (newSelectedIndices.length > 0) {
+      showTemporaryMessage("Şimdi tahtada bir hücre seçin");
+    }
   };
 
   // GameInterface.jsx içine eklenecek fonksiyon
@@ -394,7 +397,7 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Önce bir harf seçilmiş olmalı
+    // ÖNEMLİ: Bu kontrol kritik - eğer raf seçili değilse hücre seçilemez
     if (selectedRackIndices.length === 0) {
       showTemporaryMessage("Önce rafınızdan bir harf seçin!");
       return;
@@ -406,7 +409,7 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // İlk yerleştirme mi kontrol et (merkez hücre kontrolü)
+    // İlk yerleştirme mi (merkez yıldız kontrolü)
     if (game.firstMove || game.centerRequired) {
       if (row !== 7 || col !== 7) {
         showTemporaryMessage("İlk harf ortadaki yıldıza yerleştirilmelidir!");
@@ -419,68 +422,22 @@ export default function GameInterface({ gameId }) {
         showTemporaryMessage("Harf mevcut bir kelimeye bitişik olmalıdır!");
         return;
       }
-    } else {
-      // Birden fazla hücre seçildiyse, kelime düzgün sıralı mı kontrol et
-      const lastCell = selectedBoardCells[selectedBoardCells.length - 1];
-
-      // Yatay yerleştirme
-      if (placementDirection === "horizontal") {
-        if (row !== lastCell.row) {
-          showTemporaryMessage("Harfler yatay bir çizgide olmalıdır!");
-          return;
-        }
-
-        // Seçilen hücrenin bir önceki veya bir sonraki hücre olduğunu kontrol et
-        const isAdjacent = col === lastCell.col + 1 || col === lastCell.col - 1;
-        if (!isAdjacent) {
-          showTemporaryMessage("Harfler bitişik olmalıdır!");
-          return;
-        }
-      }
-      // Dikey yerleştirme
-      else if (placementDirection === "vertical") {
-        if (col !== lastCell.col) {
-          showTemporaryMessage("Harfler dikey bir çizgide olmalıdır!");
-          return;
-        }
-
-        // Seçilen hücrenin bir önceki veya bir sonraki hücre olduğunu kontrol et
-        const isAdjacent = row === lastCell.row + 1 || row === lastCell.row - 1;
-        if (!isAdjacent) {
-          showTemporaryMessage("Harfler bitişik olmalıdır!");
-          return;
-        }
-      }
-      // Henüz yön belirlenmemiş
-      else if (selectedBoardCells.length === 1) {
-        const firstCell = selectedBoardCells[0];
-
-        // Yön belirleme
-        if (row === firstCell.row) {
-          setPlacementDirection("horizontal");
-        } else if (col === firstCell.col) {
-          setPlacementDirection("vertical");
-        } else {
-          showTemporaryMessage("Harfler yatay ya da dikey yerleştirilmelidir!");
-          return;
-        }
-      }
     }
 
-    // Seçilen raf indeksini al
+    // ÖNEMLİ: Seçilen raf indeksini al - burada her zaman ilk seçili harfi kullanıyoruz
     const rackIndex = selectedRackIndices[0];
 
     // Yeni seçili hücre oluştur
     const newCell = { row, col, rackIndex };
 
-    // Eğer bu ilk seçilen hücre ise, onu ayarla
+    // Hücreyi seçili hücrelere ekle
     const newSelectedCells = [...selectedBoardCells, newCell];
     setSelectedBoardCells(newSelectedCells);
 
     // Seçilen harfi raf seçiminden kaldır
     setSelectedRackIndices([]);
 
-    // Birden fazla hücre seçildiyse yön belirle
+    // Yerleştirme yönünü belirle
     if (newSelectedCells.length === 2) {
       determineDirection(newSelectedCells);
     }
@@ -896,7 +853,8 @@ export default function GameInterface({ gameId }) {
           board={game.board}
           selectedCells={selectedBoardCells}
           onCellPress={handleCellPress}
-          showSpecials={false} // Mayın ve ödülleri gösterme
+          showSpecials={false}
+          getUserRack={getUserRack} // Bu parametre çok önemli, bunu unutma!
         />
       </ScrollView>
 

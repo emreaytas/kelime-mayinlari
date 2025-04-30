@@ -13,7 +13,7 @@ export default function GameBoard({
   selectedCells = [],
   onCellPress,
   showSpecials = false, // Debug modu için mayın ve ödülleri göster
-  getUserRack = () => [], // Harfleri getiren fonksiyon
+  getUserRack, // Harfleri getiren fonksiyon - bu parametreyi yolladığından emin ol
 }) {
   // Bir hücrenin seçili olup olmadığını kontrol et
   const isCellSelected = (row, col) => {
@@ -27,19 +27,26 @@ export default function GameBoard({
     );
 
     if (selectedCell) {
-      const userRack = getUserRack();
+      const userRack = getUserRack ? getUserRack() : [];
+
       if (
         userRack &&
+        Array.isArray(userRack) &&
         userRack.length > 0 &&
-        selectedCell.rackIndex !== undefined
+        selectedCell.rackIndex !== undefined &&
+        selectedCell.rackIndex >= 0 &&
+        selectedCell.rackIndex < userRack.length
       ) {
         const letterObj = userRack[selectedCell.rackIndex];
+
+        // Debug için konsola yazdırma (geliştirme aşamasında sonra kaldırılabilir)
+        console.log("Selected letter:", letterObj);
+
         if (letterObj) {
           return typeof letterObj === "object" ? letterObj.letter : letterObj;
         }
       }
     }
-
     return null;
   };
 
