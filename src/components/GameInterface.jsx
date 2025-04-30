@@ -397,6 +397,8 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
+    console.log(row + ":" + col);
+
     // ÖNEMLİ: Bu kontrol kritik - eğer raf seçili değilse hücre seçilemez
     if (selectedRackIndices.length === 0) {
       showTemporaryMessage("Önce rafınızdan bir harf seçin!");
