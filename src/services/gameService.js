@@ -1,5 +1,5 @@
 // src/services/gameService.js
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc, Timestamp } from "firebase/firestore";
 import { auth, firestore, database } from "../firebase/config";
 import {
   ref,
@@ -17,8 +17,9 @@ import {
   validateWord,
   letterValues,
 } from "../utils/GameBoardUtils";
-import { setupInitialGame } from "../utils/InitialsWordList"; // veya doğru dosya adı
+import { setupInitialGame } from "../utils/InitialsWordList";
 import { updateGameStatistics, saveGameRecord } from "./userStatsService";
+
 // Hamle süresini kontrol et ve süresi dolanları işaretle
 export const checkGameTimers = async () => {
   try {
@@ -390,20 +391,6 @@ export const placeWord = async (gameId, placedCells) => {
       throw new Error("Sıra sizde değil");
     }
 
-    // İlk hamle kontrolü - merkez hücreyi içermeli
-    if (game.firstMove || game.centerRequired) {
-      // Merkez yıldıza temas kontrolü
-      const touchesCenterStar = isTouchingCenterStar(
-        game.board,
-        selectedBoardCells
-      );
-
-      if (!touchesCenterStar) {
-        showTemporaryMessage("İlk kelime merkez yıldıza temas etmelidir!");
-        return;
-      }
-    }
-
     // Kullanıcı bilgisi
     const isPlayer1 = game.player1.id === userId;
     const userRack = isPlayer1 ? game.player1Rack : game.player2Rack;
@@ -601,6 +588,9 @@ export const placeWord = async (gameId, placedCells) => {
       updates.completedAt = Date.now();
       updates.reason = "allLettersUsed";
       updates.winner = userId;
+
+      // Oyun bittiği için kalıcı depolamaya aktar
+      await finishAndStoreGame(gameId, { ...game, ...updates });
     }
 
     // Firebase güncelle
@@ -636,36 +626,6 @@ export const calculateRawPoints = (placedCells, rack) => {
   });
 
   return totalPoints;
-};
-
-const isTouchingCenterStar = (board, selectedCells) => {
-  // Merkez yıldızın koordinatları
-  const centerRow = 7;
-  const centerCol = 7;
-
-  // Olası komşu hücre yönleri (yukarı, aşağı, sol, sağ)
-  const directions = [
-    { dr: -1, dc: 0 }, // yukarı
-    { dr: 1, dc: 0 }, // aşağı
-    { dr: 0, dc: -1 }, // sol
-    { dr: 0, dc: 1 }, // sağ
-  ];
-
-  // Her seçili hücre için komşuluk kontrolü
-  return selectedCells.some((cell) => {
-    // Her yönü kontrol et
-    return directions.some(({ dr, dc }) => {
-      const newRow = cell.row + dr;
-      const newCol = cell.col + dc;
-
-      // Tahta sınırları içinde mi
-      const isWithinBoard =
-        newRow >= 0 && newRow < 15 && newCol >= 0 && newCol < 15;
-
-      // Merkez yıldıza komşu mu
-      return isWithinBoard && newRow === centerRow && newCol === centerCol;
-    });
-  });
 };
 
 export const passTurn = async (gameId) => {
@@ -729,116 +689,7 @@ export const surrender = async (gameId) => {
   }
 };
 
-export const endGame = async (gameId, reason) => {
-  try {
-    const game = await getGameData(gameId);
-
-    if (game.status === "completed") {
-      return { success: true, alreadyCompleted: true };
-    }
-
-    const userId = auth.currentUser ? auth.currentUser.uid : null;
-    const isPlayer1 = userId === game.player1.id;
-
-    // Son puanları hesapla
-    let player1Score = game.player1.score;
-    let player2Score = game.player2.score;
-
-    // Teslim olma durumu
-    if (reason === "surrender") {
-      if (isPlayer1) {
-        // Oyuncu 1 teslim oldu - Oyuncu 2 kazandı
-        player2Score += 50; // Bonus puan
-      } else {
-        // Oyuncu 2 teslim oldu - Oyuncu 1 kazandı
-        player1Score += 50; // Bonus puan
-      }
-    }
-
-    // İç içe dizi sorununu önlemek için oyun verisini temizle
-    const cleanedGame = JSON.parse(JSON.stringify(game));
-
-    // Firebase'in kabul etmediği veri yapılarını düzelt
-    cleanGameDataForFirebase(cleanedGame);
-
-    // Oyunu tamamlandı olarak işaretle
-    const gameData = {
-      ...cleanedGame,
-      status: "completed",
-      completedAt: Date.now(),
-      reason,
-      player1: {
-        ...cleanedGame.player1,
-        score: player1Score,
-      },
-      player2: {
-        ...cleanedGame.player2,
-        score: player2Score,
-      },
-    };
-
-    // Kazanan belirle
-    const player1Win = player1Score > player2Score;
-    const player2Win = player2Score > player1Score;
-    const isDraw = player1Score === player2Score;
-
-    // Kazanan oyuncuyu belirle
-    let winnerId = null;
-    if (player1Win) {
-      winnerId = game.player1.id;
-    } else if (player2Win) {
-      winnerId = game.player2.id;
-    }
-
-    // Kazanan bilgisini oyuna ekle
-    gameData.winner = winnerId;
-    gameData.isDraw = isDraw;
-
-    // Completed games koleksiyonuna ekle
-    await set(ref(database, `completedGames/${gameId}`), gameData);
-
-    // Aktif oyunlardan kaldır
-    await update(ref(database, `games/${gameId}`), { status: "completed" });
-
-    // Firestore'a oyun kaydını ve istatistikleri ekle
-    try {
-      // Oyun kaydını sakla
-      await saveGameRecord(gameId, gameData);
-
-      // Her oyuncu için istatistikleri güncelle
-      const player1Result = player1Win ? "win" : isDraw ? "tie" : "loss";
-      const player2Result = player2Win ? "win" : isDraw ? "tie" : "loss";
-
-      await updateGameStatistics(
-        game.player1.id,
-        gameId,
-        player1Result,
-        player1Score
-      );
-      await updateGameStatistics(
-        game.player2.id,
-        gameId,
-        player2Result,
-        player2Score
-      );
-    } catch (error) {
-      console.error("Error updating game statistics:", error);
-    }
-
-    return {
-      success: true,
-      player1Score,
-      player2Score,
-      winner: winnerId,
-    };
-  } catch (error) {
-    console.error("End game error:", error);
-    throw error;
-  }
-};
-
-// gameService.js içine yeni yardımcı fonksiyon ekleyin
-// Bu fonksiyon iç içe dizileri ve diğer Firebase ile uyumlu olmayan veri yapılarını temizler
+// Firebase için veri temizleme
 function cleanGameDataForFirebase(gameData) {
   if (!gameData || typeof gameData !== "object") return;
 
@@ -868,6 +719,140 @@ function cleanGameDataForFirebase(gameData) {
     }
   });
 }
+
+// Oyunu bitir, kalıcı depolamaya aktar
+export const finishAndStoreGame = async (gameId, gameData) => {
+  try {
+    console.log(
+      `Oyun ${gameId} tamamlanıyor ve kalıcı depolamaya aktarılıyor...`
+    );
+
+    // Veri güvenliği için temizleme
+    const cleanGameData = JSON.parse(JSON.stringify(gameData));
+    cleanGameDataForFirebase(cleanGameData);
+
+    // 1. Firestore'a kaydedelim - saveGameRecord fonksiyonunu kullanıyoruz
+    await saveGameRecord(gameId, cleanGameData);
+    console.log(`Oyun ${gameId} Firestore'a başarıyla kaydedildi.`);
+
+    // 2. completedGames koleksiyonuna taşıyalım
+    await set(ref(database, `completedGames/${gameId}`), cleanGameData);
+    console.log(`Oyun ${gameId} completedGames koleksiyonuna eklendi.`);
+
+    // 3. İstatistikleri güncelleyelim
+    const player1Id = cleanGameData.player1.id;
+    const player2Id = cleanGameData.player2.id;
+    const player1Score = cleanGameData.player1.score || 0;
+    const player2Score = cleanGameData.player2.score || 0;
+
+    // Kazananı belirle
+    const player1Win = player1Score > player2Score;
+    const player2Win = player2Score > player1Score;
+    const isDraw = player1Score === player2Score;
+
+    // İstatistikleri güncelle
+    const player1Result = player1Win ? "win" : isDraw ? "tie" : "loss";
+    const player2Result = player2Win ? "win" : isDraw ? "tie" : "loss";
+
+    await updateGameStatistics(player1Id, gameId, player1Result, player1Score);
+    await updateGameStatistics(player2Id, gameId, player2Result, player2Score);
+    console.log(`Oyun ${gameId} için istatistikler güncellendi.`);
+
+    return {
+      success: true,
+      gameId,
+      status: "completed",
+    };
+  } catch (error) {
+    console.error("Oyun tamamlama hatası:", error);
+    throw error;
+  }
+};
+
+export const endGame = async (gameId, reason) => {
+  try {
+    const game = await getGameData(gameId);
+
+    if (game.status === "completed") {
+      return { success: true, alreadyCompleted: true };
+    }
+
+    const userId = auth.currentUser ? auth.currentUser.uid : null;
+    const isPlayer1 = userId === game.player1.id;
+
+    // Son puanları hesapla
+    let player1Score = game.player1.score;
+    let player2Score = game.player2.score;
+
+    // Teslim olma durumu
+    if (reason === "surrender") {
+      if (isPlayer1) {
+        // Oyuncu 1 teslim oldu - Oyuncu 2 kazandı
+        player2Score += 50; // Bonus puan
+      } else {
+        // Oyuncu 2 teslim oldu - Oyuncu 1 kazandı
+        player1Score += 50; // Bonus puan
+      }
+    }
+
+    // Kazanan belirle
+    const player1Win = player1Score > player2Score;
+    const player2Win = player2Score > player1Score;
+    const isDraw = player1Score === player2Score;
+
+    // Kazanan oyuncuyu belirle
+    let winnerId = null;
+    if (player1Win) {
+      winnerId = game.player1.id;
+    } else if (player2Win) {
+      winnerId = game.player2.id;
+    }
+
+    // Oyunu güncelle
+    const updatedGameData = {
+      ...game,
+      status: "completed",
+      completedAt: Date.now(),
+      reason,
+      player1: {
+        ...game.player1,
+        score: player1Score,
+      },
+      player2: {
+        ...game.player2,
+        score: player2Score,
+      },
+      winner: winnerId,
+      isDraw: isDraw,
+      finishedBy: userId || "system",
+    };
+
+    // Veri güvenliği için temizleme
+    cleanGameDataForFirebase(updatedGameData);
+
+    // Aktif oyunu tamamlandı olarak güncelle
+    await update(ref(database, `games/${gameId}`), {
+      status: "completed",
+      completedAt: updatedGameData.completedAt,
+      reason: updatedGameData.reason,
+      winner: updatedGameData.winner,
+      isDraw: updatedGameData.isDraw,
+    });
+
+    // Tamamlanmış oyunu kalıcı depolamaya aktar
+    await finishAndStoreGame(gameId, updatedGameData);
+
+    return {
+      success: true,
+      player1Score,
+      player2Score,
+      winner: winnerId,
+    };
+  } catch (error) {
+    console.error("End game error:", error);
+    throw error;
+  }
+};
 
 // Ödül kullan
 export const useReward = async (gameId, rewardType) => {
@@ -1046,4 +1031,41 @@ export const getUserCompletedGames = async () => {
     console.error("Completed games error:", error);
     throw error;
   }
+};
+
+// Kelime puanlarını hesapla
+export const calculateWordPoints = (placedCells, board, rack) => {
+  let totalPoints = 0;
+  let wordMultiplier = 1;
+
+  placedCells.forEach((cell) => {
+    const { row, col, rackIndex } = cell;
+
+    // Harfi oyuncunun rafından al
+    const letterObj = rack[rackIndex];
+    const letter = typeof letterObj === "object" ? letterObj.letter : letterObj;
+
+    // Harfin puan değerini al
+    let letterPoint = letter === "JOKER" ? 0 : letterValues[letter] || 0;
+
+    // Hücre tipini kontrol et (çarpanlar)
+    const cellType = board[row][col]?.type;
+
+    if (cellType === "H2") {
+      letterPoint *= 2; // Harf puanı 2 katı
+    } else if (cellType === "H3") {
+      letterPoint *= 3; // Harf puanı 3 katı
+    } else if (cellType === "K2") {
+      wordMultiplier *= 2; // Kelime puanı 2 katı
+    } else if (cellType === "K3") {
+      wordMultiplier *= 3; // Kelime puanı 3 katı
+    }
+
+    totalPoints += letterPoint;
+  });
+
+  // Kelime çarpanını uygula
+  totalPoints *= wordMultiplier;
+
+  return totalPoints;
 };

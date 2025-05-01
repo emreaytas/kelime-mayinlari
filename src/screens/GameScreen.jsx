@@ -12,14 +12,15 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { auth } from "../firebase/config";
 import GameInterface from "../components/GameInterface";
+import { checkGameTimer } from "../services/gameTimerService"; // Timer kontrolü eklendi
 
 export default function GameScreen() {
   const { gameId } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  console.log("export default function GameScreen");
+  const [gameStatus, setGameStatus] = useState(null);
+
   useEffect(() => {
-    console.log("export default function GameScreen useEffect...");
     // Auth durumunu dinle
     const unsubscribe = auth.onAuthStateChanged((user) => {
       setUser(user);
@@ -38,6 +39,38 @@ export default function GameScreen() {
           onPress: () => router.replace("/home"),
         },
       ]);
+    } else if (gameId && !loading) {
+      // Oyun süresini kontrol et
+      checkGameTimer(gameId).then((result) => {
+        if (result.error) {
+          Alert.alert("Hata", "Oyun bilgileri alınamadı", [
+            {
+              text: "Ana Sayfaya Dön",
+              onPress: () => router.replace("/home"),
+            },
+          ]);
+        } else if (!result.exists) {
+          Alert.alert("Hata", "Oyun bulunamadı", [
+            {
+              text: "Ana Sayfaya Dön",
+              onPress: () => router.replace("/home"),
+            },
+          ]);
+        } else if (result.expired) {
+          Alert.alert(
+            "Bilgi",
+            "Bu oyunun süresi doldu. Ana sayfadan 'Biten Oyunlar' sekmesinde görebilirsiniz.",
+            [
+              {
+                text: "Ana Sayfaya Dön",
+                onPress: () => router.replace("/home"),
+              },
+            ]
+          );
+        } else {
+          setGameStatus(result.status);
+        }
+      });
     }
   }, [gameId, loading]);
 
@@ -53,6 +86,22 @@ export default function GameScreen() {
   if (!user) {
     // Kullanıcı giriş yapmamış, giriş sayfasına yönlendir
     return router.replace("/");
+  }
+
+  if (gameStatus === "completed") {
+    return (
+      <View style={styles.errorContainer}>
+        <Text>
+          Bu oyun tamamlanmış. Biten oyunlar listesinden sonucu görebilirsiniz.
+        </Text>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => router.replace("/home")}
+        >
+          <Text style={styles.buttonText}>Ana Sayfaya Dön</Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   return (

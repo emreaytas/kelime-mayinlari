@@ -163,7 +163,11 @@ export default function HomeScreen() {
   // Aktif oyunları yükle
   const loadActiveGames = async () => {
     try {
-      // Gerçek servis fonksiyonunu kullan
+      // Önce süreleri kontrol et
+      const { checkActiveGameTimers } = require("../services/gameTimerService");
+      await checkActiveGameTimers();
+
+      // Şimdi aktif oyunları getir
       const games = await getUserActiveGames();
 
       // Oyun verilerini formatlayarak state'e kaydet
