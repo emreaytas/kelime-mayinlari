@@ -7,6 +7,9 @@ export const setupInitialGame = (game) => {
     return game;
   }
 
+  // Oyun kopyasını oluştur
+  const newGame = { ...game };
+
   // İlk hamle yapıldığını belirt
   newGame.firstMove = false;
   newGame.centerRequired = false;
