@@ -372,33 +372,194 @@ export default function GameInterface({ gameId }) {
   };
 
   // Hamleyi onayla ve sunucuya gönder
+
+  // Hücre seçimi
+  const handleCellPress = (row, col) => {
+    console.log(`handleCellPress çağrıldı - Satır: ${row}, Sütun: ${col}`);
+
+    // Oyun kontrolü
+    if (!game || !game.board) {
+      console.error("Oyun veya tahta tanımlı değil!");
+      return;
+    }
+
+    // Kullanıcının sırası değilse işlem yapma
+    if (!isUserTurn()) {
+      showTemporaryMessage("Şu anda sıra sizde değil!");
+      return;
+    }
+
+    // Eğer raf seçili değilse hücre seçilemez
+    if (selectedRackIndices.length === 0) {
+      showTemporaryMessage("Önce rafınızdan bir harf seçin!");
+      return;
+    }
+
+    // Seçilen raf indeksini al
+    const rackIndex = selectedRackIndices[0];
+
+    // Hücre var mı kontrol et (kritik güvenlik kontrolü)
+    if (!game.board[row] || game.board[row][col] === undefined) {
+      console.error(`Geçersiz hücre koordinatları: (${row}, ${col})`);
+      return;
+    }
+
+    // Hücre dolu mu kontrol et
+    if (game.board[row][col] && game.board[row][col].letter) {
+      showTemporaryMessage("Bu hücre zaten dolu!");
+      return;
+    }
+
+    // Harfler bitişik ve aynı doğrultuda yerleştirilmeli
+    if (selectedBoardCells.length >= 1) {
+      // Bir sonraki harf, mevcut seçili harflerle aynı doğrultuda olmalı
+      const isValidPlacement = checkValidPlacement(row, col);
+      if (!isValidPlacement) {
+        showTemporaryMessage("Harfler aynı doğrultuda yerleştirilmelidir!");
+        return;
+      }
+    }
+
+    // Yeni seçili hücre oluştur
+    const newCell = { row, col, rackIndex };
+
+    // Hücreyi seçili hücrelere ekle
+    const newSelectedCells = [...selectedBoardCells, newCell];
+    setSelectedBoardCells(newSelectedCells);
+
+    // Seçilen harfi raf seçiminden kaldır
+    setSelectedRackIndices([]);
+
+    // Yerleştirme yönünü belirle
+    if (newSelectedCells.length === 2) {
+      determineDirection(newSelectedCells);
+    }
+
+    // Kelimeyi oluştur (gösterim için)
+    updateCurrentWord(newSelectedCells);
+
+    console.log("Harf yerleştirildi:", { row, col, rackIndex });
+  };
+
+  // Kelimeyi göstermek için yeni fonksiyon
+  const updateCurrentWord = (cells) => {
+    if (cells.length === 0) {
+      setCurrentWord("");
+      setWordValid(false);
+      setEarnedPoints(0);
+      return;
+    }
+
+    // Hücreleri sırala (yön belirlendiyse ona göre)
+    const sortedCells = [...cells].sort((a, b) => {
+      if (placementDirection === "horizontal") {
+        return a.col - b.col;
+      } else if (placementDirection === "vertical") {
+        return a.row - b.row;
+      }
+      // Varsayılan sıralama (yön belirlenemediyse)
+      return 0;
+    });
+
+    // Kelimeyi oluştur
+    const rack = getUserRack();
+    let word = "";
+
+    sortedCells.forEach((cell) => {
+      const { rackIndex } = cell;
+      const letterObj = rack[rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+      word += letter === "JOKER" ? "*" : letter;
+    });
+
+    setCurrentWord(word);
+  };
+
+  // confirmMove fonksiyonunu güncelle
   const confirmMove = async () => {
     if (!isUserTurn()) {
       showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
     }
 
-    if (!wordValid) {
-      Alert.alert("Uyarı", "Geçerli bir kelime oluşturun!");
+    // Seçili hücre yoksa uyarı göster
+    if (selectedBoardCells.length === 0) {
+      Alert.alert("Uyarı", "Lütfen önce bir kelime oluşturun!");
       return;
     }
 
-    // Ekstra kelime doğrulama kontrolü
-    if (currentWord && currentWord.length >= 2) {
-      // validateWord fonksiyonunu kullanarak kelimenin wordList'te olup olmadığını kontrol et
-      const isValidWord = validateWord(currentWord.toLowerCase());
+    // İlk hamle kontrolü - kelime merkeze temas ediyor mu?
+    if (game.firstMove || game.centerRequired) {
+      const touchesCenter = selectedBoardCells.some(
+        (cell) => cell.row === 7 && cell.col === 7
+      );
 
-      if (!isValidWord) {
+      if (!touchesCenter) {
         Alert.alert(
-          "Geçersiz Kelime",
-          "Girdiğiniz kelime sözlükte bulunamadı. Lütfen geçerli bir kelime oluşturun."
+          "Uyarı",
+          "İlk hamle için kelimenizin bir harfi merkez yıldıza temas etmelidir!"
         );
         return;
       }
     } else {
+      // İlk hamle değilse herhangi bir mevcut harfe temas ediyor mu kontrol et
+      const touchesExistingLetter = selectedBoardCells.some((cell) => {
+        return checkIfAdjacentToExistingLetter(cell.row, cell.col, game.board);
+      });
+
+      if (!touchesExistingLetter) {
+        Alert.alert(
+          "Uyarı",
+          "Kelimelerinizden biri mevcut bir harfe temas etmelidir!"
+        );
+        return;
+      }
+    }
+
+    // Kelimeyi sıralı hücrelerden oluştur
+    const sortedCells = [...selectedBoardCells].sort((a, b) => {
+      if (placementDirection === "horizontal") {
+        return a.col - b.col;
+      } else if (placementDirection === "vertical") {
+        return a.row - b.row;
+      }
+      return 0;
+    });
+
+    // Kelimeyi oluştur
+    const rack = getUserRack();
+    let word = "";
+
+    sortedCells.forEach((cell) => {
+      const { rackIndex } = cell;
+      const letterObj = rack[rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+      word += letter === "JOKER" ? "*" : letter;
+    });
+
+    // Kelime kontrolü
+    if (word.length < 2) {
       Alert.alert("Uyarı", "Kelime en az 2 harften oluşmalıdır!");
       return;
     }
+
+    // Kelime wordList'te var mı kontrol et
+    const isValid = validateWord(word.toLowerCase());
+    setWordValid(isValid);
+
+    if (!isValid) {
+      Alert.alert(
+        "Geçersiz Kelime",
+        "Girdiğiniz kelime sözlükte bulunamadı. Lütfen geçerli bir kelime oluşturun."
+      );
+      return;
+    }
+
+    // Puanları hesapla
+    const points = calculateWordPoints(sortedCells, game.board, rack);
+    setEarnedPoints(points);
 
     try {
       setConfirmingAction(true);
@@ -475,93 +636,6 @@ export default function GameInterface({ gameId }) {
     } finally {
       setConfirmingAction(false);
     }
-  };
-
-  // Hücre seçimi
-  const handleCellPress = (row, col) => {
-    console.log(`handleCellPress çağrıldı - Satır: ${row}, Sütun: ${col}`);
-
-    // Oyun kontrolü
-    if (!game || !game.board) {
-      console.error("Oyun veya tahta tanımlı değil!");
-      return;
-    }
-
-    // Kullanıcının sırası değilse işlem yapma
-    if (!isUserTurn()) {
-      showTemporaryMessage("Şu anda sıra sizde değil!");
-      return;
-    }
-
-    // Eğer raf seçili değilse hücre seçilemez
-    if (selectedRackIndices.length === 0) {
-      showTemporaryMessage("Önce rafınızdan bir harf seçin!");
-      return;
-    }
-
-    // Seçilen raf indeksini al
-    const rackIndex = selectedRackIndices[0];
-
-    // Hücre var mı kontrol et (kritik güvenlik kontrolü)
-    if (!game.board[row] || game.board[row][col] === undefined) {
-      console.error(`Geçersiz hücre koordinatları: (${row}, ${col})`);
-      return;
-    }
-
-    // Hücre dolu mu kontrol et
-    if (game.board[row][col] && game.board[row][col].letter) {
-      showTemporaryMessage("Bu hücre zaten dolu!");
-      return;
-    }
-
-    // İlk yerleştirme mi (merkez yıldız kontrolü)
-    // İlk hamle mutlaka merkez (7,7) hücresini içermelidir
-    if (
-      (game.firstMove || game.centerRequired) &&
-      selectedBoardCells.length === 0
-    ) {
-      if (row !== 7 || col !== 7) {
-        showTemporaryMessage("İlk harf ortadaki yıldıza yerleştirilmelidir!");
-        return;
-      }
-    } else if (
-      selectedBoardCells.length === 0 &&
-      !(game.firstMove || game.centerRequired)
-    ) {
-      // İlk hamle değilse ve bu ilk seçilen hücreyse, mevcut bir harfe bitişik mi kontrol et
-      const isAdjacent = checkIfAdjacentToExistingLetter(row, col, game.board);
-      if (!isAdjacent) {
-        showTemporaryMessage("Harf mevcut bir kelimeye bitişik olmalıdır!");
-        return;
-      }
-    } else if (selectedBoardCells.length >= 1) {
-      // Bir sonraki harf, mevcut seçili harflerle aynı doğrultuda olmalı
-      const isValidPlacement = checkValidPlacement(row, col);
-      if (!isValidPlacement) {
-        showTemporaryMessage("Harfler aynı doğrultuda yerleştirilmelidir!");
-        return;
-      }
-    }
-
-    // Yeni seçili hücre oluştur
-    const newCell = { row, col, rackIndex };
-
-    // Hücreyi seçili hücrelere ekle
-    const newSelectedCells = [...selectedBoardCells, newCell];
-    setSelectedBoardCells(newSelectedCells);
-
-    // Seçilen harfi raf seçiminden kaldır
-    setSelectedRackIndices([]);
-
-    // Yerleştirme yönünü belirle
-    if (newSelectedCells.length === 2) {
-      determineDirection(newSelectedCells);
-    }
-
-    // Oluşan kelimeyi kontrol et
-    checkWord(newSelectedCells);
-
-    console.log("Harf yerleştirildi:", { row, col, rackIndex });
   };
 
   const checkIfAdjacentToExistingLetter = (row, col, board) => {
@@ -717,9 +791,83 @@ export default function GameInterface({ gameId }) {
   };
 
   // Puanları hesapla (örnek bir fonksiyon - gerçek puanlama mantığı farklı olabilir)
-  const calculateWordPoints = (cells) => {
-    // Bu sadece basit bir örnek
-    return cells.length * 10;
+  // Kelime puanlarını hesaplama fonksiyonu
+  const calculateWordPoints = (placedCells, board, rack) => {
+    let totalPoints = 0;
+    let wordMultiplier = 1;
+
+    placedCells.forEach((cell) => {
+      const { row, col, rackIndex } = cell;
+
+      // Harfi oyuncunun rafından al
+      const letterObj = rack[rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+
+      // Harfin puan değerini al - projedeki harflerin puan değerleri
+      let letterPoint = 0;
+
+      // JOKER kullanıldıysa puanı 0
+      if (letter === "JOKER" || letter === "*") {
+        letterPoint = 0;
+      } else {
+        // Harflerin puan değerleri
+        const letterValues = {
+          A: 1,
+          B: 3,
+          C: 4,
+          Ç: 4,
+          D: 3,
+          E: 1,
+          F: 7,
+          G: 5,
+          Ğ: 8,
+          H: 5,
+          I: 2,
+          İ: 1,
+          J: 10,
+          K: 1,
+          L: 1,
+          M: 2,
+          N: 1,
+          O: 2,
+          Ö: 7,
+          P: 5,
+          R: 1,
+          S: 2,
+          Ş: 4,
+          T: 1,
+          U: 2,
+          Ü: 3,
+          V: 7,
+          Y: 3,
+          Z: 4,
+        };
+
+        letterPoint = letterValues[letter] || 0;
+      }
+
+      // Hücre tipini kontrol et (çarpanlar)
+      const cellType = board[row][col]?.type;
+
+      // Harf çarpanları
+      if (cellType === "H2") {
+        letterPoint *= 2; // Harf puanı 2 katı
+      } else if (cellType === "H3") {
+        letterPoint *= 3; // Harf puanı 3 katı
+      } else if (cellType === "K2") {
+        wordMultiplier *= 2; // Kelime puanı 2 katı
+      } else if (cellType === "K3") {
+        wordMultiplier *= 3; // Kelime puanı 3 katı
+      }
+
+      totalPoints += letterPoint;
+    });
+
+    // Kelime çarpanını uygula
+    totalPoints *= wordMultiplier;
+
+    return totalPoints;
   };
 
   // Hamleyi iptal et
