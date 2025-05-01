@@ -19,7 +19,7 @@ import {
 } from "../utils/GameBoardUtils";
 import { setupInitialGame } from "../utils/InitialsWordList";
 import { updateGameStatistics, saveGameRecord } from "./userStatsService";
-
+import { cleanFirebaseData } from "../utils/firebaseUtils"; // Adjust the path as needed
 // Hamle süresini kontrol et ve süresi dolanları işaretle
 export const checkGameTimers = async () => {
   try {
@@ -170,6 +170,24 @@ export const checkGameTimers = async () => {
   } catch (error) {
     console.error("Timer check error:", error);
     return { error: error.message };
+  }
+};
+
+export const saveGameToFirestore = async (gameId, gameData) => {
+  try {
+    // Create a deep copy of the game data
+    const cleanGameData = JSON.parse(JSON.stringify(gameData));
+
+    // Clean the data (convert nested arrays to objects)
+    cleanFirebaseData(cleanGameData);
+
+    // Now you can safely save to Firestore
+    await setDoc(doc(firestore, "games", gameId), cleanGameData);
+
+    return { success: true };
+  } catch (error) {
+    console.error(`Error saving game ${gameId} to Firestore:`, error);
+    throw error;
   }
 };
 

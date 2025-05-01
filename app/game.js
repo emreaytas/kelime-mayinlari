@@ -1,13 +1,14 @@
 // app/game.js
-import { Redirect } from "expo-router";
+import React, { useState, useEffect } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
-import { useEffect, useState } from "react";
+import { useLocalSearchParams, router } from "expo-router";
 import { auth } from "../src/firebase/config";
 import GameScreen from "../src/screens/GameScreen";
 
 export default function Game() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState(null);
+  const { gameId } = useLocalSearchParams();
 
   useEffect(() => {
     // Listen for auth state to change
@@ -17,7 +18,7 @@ export default function Game() {
     });
 
     // Cleanup subscription
-    return unsubscribe;
+    return () => unsubscribe();
   }, []);
 
   if (initializing) {
@@ -30,11 +31,12 @@ export default function Game() {
 
   if (!user) {
     // Not signed in, redirect to login
-    return <Redirect href="/" />;
+    router.replace("/");
+    return null;
   }
 
   // User is signed in, show game screen
-  return <GameScreen />;
+  return <GameScreen gameId={gameId} />;
 }
 
 const styles = StyleSheet.create({

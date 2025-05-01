@@ -8,6 +8,130 @@ import { updateGameStatistics } from "./userStatsService";
  * Aktif oyunları kontrol eder ve süresi bitenleri tamamlar
  * Bu fonksiyon belirli aralıklarla çağrılmalıdır
  */
+
+// Add this to your gameTimerService.js file or wherever you check game timers
+
+// Check if the current player's time has expired
+const checkCurrentPlayerTimer = async (gameId) => {
+  try {
+    const gameRef = ref(database, `games/${gameId}`);
+    const snapshot = await get(gameRef);
+
+    if (!snapshot.exists() || snapshot.val().status !== "active") {
+      return { exists: false };
+    }
+
+    const gameData = snapshot.val();
+    const now = Date.now();
+    const lastMoveTime = gameData.lastMoveTime || gameData.startTime || now;
+    const timeSinceLastMove = now - lastMoveTime;
+
+    // Get the time limit based on game type
+    let timeLimit;
+    switch (gameData.gameType) {
+      case "2min":
+        timeLimit = 2 * 60 * 1000; // 2 minutes
+        break;
+      case "5min":
+        timeLimit = 5 * 60 * 1000; // 5 minutes
+        break;
+      case "12hour":
+        timeLimit = 12 * 60 * 60 * 1000; // 12 hours
+        break;
+      case "24hour":
+        timeLimit = 24 * 60 * 60 * 1000; // 24 hours
+        break;
+      default:
+        timeLimit = 24 * 60 * 60 * 1000; // Default 24 hours
+    }
+
+    // Check if time expired
+    if (timeSinceLastMove > timeLimit) {
+      // Handle the expired game immediately
+      await handleExpiredGame(gameId, gameData);
+      return { expired: true };
+    }
+
+    // Calculate remaining time
+    const remainingTime = timeLimit - timeSinceLastMove;
+    return {
+      expired: false,
+      remainingTime,
+    };
+  } catch (error) {
+    console.error(`Error checking timer for game ${gameId}:`, error);
+    return { error: error.message };
+  }
+};
+
+// Add this to your GameInterface.jsx component
+
+// Set up timer to check time remaining
+useEffect(() => {
+  if (!game || !isUserTurn() || !gameId) return;
+
+  // Check time remaining every second
+  const timerInterval = setInterval(async () => {
+    try {
+      const result = await checkCurrentPlayerTimer(gameId);
+
+      if (result.expired) {
+        // Game has ended due to time expiration
+        // You don't need to do anything here as the server already handled it
+        // Just show a message to the user
+        Alert.alert(
+          "Süre Doldu!",
+          "Hamle süreniz doldu. Oyun otomatik olarak sonlandırıldı.",
+          [
+            {
+              text: "Ana Sayfaya Dön",
+              onPress: () => router.replace("/home"),
+            },
+          ]
+        );
+
+        // Clear the interval
+        clearInterval(timerInterval);
+      } else if (result.remainingTime) {
+        // Update remaining time display
+        const seconds = Math.floor((result.remainingTime / 1000) % 60);
+        const minutes = Math.floor((result.remainingTime / (1000 * 60)) % 60);
+        const hours = Math.floor(
+          (result.remainingTime / (1000 * 60 * 60)) % 24
+        );
+
+        let timeDisplay = "";
+        if (hours > 0) {
+          timeDisplay = `${hours}s ${minutes}d`;
+        } else if (minutes > 0) {
+          timeDisplay = `${minutes}d ${seconds}s`;
+        } else {
+          timeDisplay = `${seconds}s`;
+        }
+
+        setRemainingTime(timeDisplay);
+
+        // Change color if time is running out
+        if (result.remainingTime < 30 * 1000) {
+          // Less than 30 seconds
+          setTimerColor("#e74c3c"); // Red
+        } else if (result.remainingTime < 2 * 60 * 1000) {
+          // Less than 2 minutes
+          setTimerColor("#f39c12"); // Orange
+        } else {
+          setTimerColor("#333"); // Normal
+        }
+      }
+    } catch (error) {
+      console.error("Timer check error:", error);
+    }
+  }, 1000);
+
+  return () => {
+    clearInterval(timerInterval);
+  };
+}, [game, isUserTurn, gameId]);
+
 export const checkActiveGameTimers = async () => {
   try {
     // Aktif oyunları al
