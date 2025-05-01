@@ -1,14 +1,15 @@
-// app/game.js
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
+import { useState, useEffect } from "react";
 import { auth } from "../src/firebase/config";
 import GameScreen from "../src/screens/GameScreen";
 
 export default function Game() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState(null);
-  const { gameId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const gameId = params.gameId;
 
   useEffect(() => {
     // Listen for auth state to change

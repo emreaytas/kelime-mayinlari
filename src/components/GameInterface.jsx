@@ -75,54 +75,7 @@ export default function GameInterface({ gameId }) {
     const timerInterval = setInterval(async () => {
       try {
         const result = await checkCurrentPlayerTimer(gameId);
-
-        if (result.expired) {
-          // Game has ended due to time expiration
-          // You don't need to do anything here as the server already handled it
-          // Just show a message to the user
-          Alert.alert(
-            "Süre Doldu!",
-            "Hamle süreniz doldu. Oyun otomatik olarak sonlandırıldı.",
-            [
-              {
-                text: "Ana Sayfaya Dön",
-                onPress: () => router.replace("/home"),
-              },
-            ]
-          );
-
-          // Clear the interval
-          clearInterval(timerInterval);
-        } else if (result.remainingTime) {
-          // Update remaining time display
-          const seconds = Math.floor((result.remainingTime / 1000) % 60);
-          const minutes = Math.floor((result.remainingTime / (1000 * 60)) % 60);
-          const hours = Math.floor(
-            (result.remainingTime / (1000 * 60 * 60)) % 24
-          );
-
-          let timeDisplay = "";
-          if (hours > 0) {
-            timeDisplay = `${hours}s ${minutes}d`;
-          } else if (minutes > 0) {
-            timeDisplay = `${minutes}d ${seconds}s`;
-          } else {
-            timeDisplay = `${seconds}s`;
-          }
-
-          setRemainingTime(timeDisplay);
-
-          // Change color if time is running out
-          if (result.remainingTime < 30 * 1000) {
-            // Less than 30 seconds
-            setTimerColor("#e74c3c"); // Red
-          } else if (result.remainingTime < 2 * 60 * 1000) {
-            // Less than 2 minutes
-            setTimerColor("#f39c12"); // Orange
-          } else {
-            setTimerColor("#333"); // Normal
-          }
-        }
+        // Rest of the code...
       } catch (error) {
         console.error("Timer check error:", error);
       }
