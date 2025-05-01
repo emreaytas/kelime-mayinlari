@@ -383,11 +383,39 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
+    // Ekstra kelime doğrulama kontrolü
+    if (currentWord && currentWord.length >= 2) {
+      // validateWord fonksiyonunu kullanarak kelimenin wordList'te olup olmadığını kontrol et
+      const isValidWord = validateWord(currentWord.toLowerCase());
+
+      if (!isValidWord) {
+        Alert.alert(
+          "Geçersiz Kelime",
+          "Girdiğiniz kelime sözlükte bulunamadı. Lütfen geçerli bir kelime oluşturun."
+        );
+        return;
+      }
+    } else {
+      Alert.alert("Uyarı", "Kelime en az 2 harften oluşmalıdır!");
+      return;
+    }
+
     try {
       setConfirmingAction(true);
 
+      // Kullanılacak harflerin sayısını belirle (görsel geri bildirim için)
+      const usedLetterCount = selectedBoardCells.length;
+
       // Kelimeyi yerleştir
       const result = await placeWord(gameId, selectedBoardCells);
+
+      // Harflerin yenilendiğini bildiren özel bir mesaj göster
+      showTemporaryMessage(
+        `${usedLetterCount} harf kullanıldı, ${Math.min(
+          usedLetterCount,
+          game.letterPool.length
+        )} yeni harf alındı`
+      );
 
       // Özel etkileri göster
       if (result.effects) {

@@ -392,12 +392,15 @@ export const placeWord = async (gameId, placedCells) => {
 
     // İlk hamle kontrolü - merkez hücreyi içermeli
     if (game.firstMove || game.centerRequired) {
-      const centerCellIncluded = placedCells.some(
-        (cell) => cell.row === 7 && cell.col === 7
+      // Merkez yıldıza temas kontrolü
+      const touchesCenterStar = isTouchingCenterStar(
+        game.board,
+        selectedBoardCells
       );
 
-      if (!centerCellIncluded) {
-        throw new Error("İlk hamle merkez yıldıza yerleştirilmelidir!");
+      if (!touchesCenterStar) {
+        showTemporaryMessage("İlk kelime merkez yıldıza temas etmelidir!");
+        return;
       }
     }
 
@@ -633,6 +636,36 @@ export const calculateRawPoints = (placedCells, rack) => {
   });
 
   return totalPoints;
+};
+
+const isTouchingCenterStar = (board, selectedCells) => {
+  // Merkez yıldızın koordinatları
+  const centerRow = 7;
+  const centerCol = 7;
+
+  // Olası komşu hücre yönleri (yukarı, aşağı, sol, sağ)
+  const directions = [
+    { dr: -1, dc: 0 }, // yukarı
+    { dr: 1, dc: 0 }, // aşağı
+    { dr: 0, dc: -1 }, // sol
+    { dr: 0, dc: 1 }, // sağ
+  ];
+
+  // Her seçili hücre için komşuluk kontrolü
+  return selectedCells.some((cell) => {
+    // Her yönü kontrol et
+    return directions.some(({ dr, dc }) => {
+      const newRow = cell.row + dr;
+      const newCol = cell.col + dc;
+
+      // Tahta sınırları içinde mi
+      const isWithinBoard =
+        newRow >= 0 && newRow < 15 && newCol >= 0 && newCol < 15;
+
+      // Merkez yıldıza komşu mu
+      return isWithinBoard && newRow === centerRow && newCol === centerCol;
+    });
+  });
 };
 
 export const passTurn = async (gameId) => {
