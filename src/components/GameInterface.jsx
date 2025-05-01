@@ -45,6 +45,9 @@ export default function GameInterface({ gameId }) {
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
 
+  // Tamamlanmış oyunu göstermek için flag
+  const gameCompletedShown = useRef(false);
+
   const showTemporaryMessage = (message) => {
     // Önceki mesaj varsa ve timer çalışıyorsa temizle
     if (toastTimer.current) {
@@ -82,6 +85,8 @@ export default function GameInterface({ gameId }) {
       console.log("Seçili Raf İndeksleri:", selectedRackIndices);
       console.log("Seçili Hücreler:", selectedBoardCells);
       console.log("Kullanıcının Sırası mı:", isUserTurn());
+      console.log("İlk Hamle mi:", game.firstMove);
+      console.log("Merkez Gerekli mi:", game.centerRequired);
     }
     console.log("========================");
   }, [game, selectedRackIndices, selectedBoardCells]);
@@ -97,10 +102,10 @@ export default function GameInterface({ gameId }) {
 
   useEffect(() => {
     // Oyun tamamlandıysa ve daha önce popup gösterilmediyse
-    if (game && game.status === "completed" && !game._completedShown) {
+    if (game && game.status === "completed" && !gameCompletedShown.current) {
       showGameResultPopup(game);
       // Tekrar göstermeyi önle
-      setGame({ ...game, _completedShown: true });
+      gameCompletedShown.current = true;
     }
   }, [game]);
 
@@ -229,13 +234,24 @@ export default function GameInterface({ gameId }) {
         return;
       }
 
+      // Oyun verilerini güncelle
       setGame(gameData);
+      console.log("Oyun verileri güncellendi:", gameData);
+
+      // Seçimleri temizle - bu özellikle diğer kullanıcının hamlelerinden sonra önemli
+      if (
+        gameData.turnPlayer === auth.currentUser?.uid &&
+        selectedBoardCells.length > 0
+      ) {
+        // Yeni sıra bizde ise ve hala seçilmiş hücreler varsa temizle
+        resetSelections();
+      }
 
       // Oyun tamamlandıysa ve daha önce popup gösterilmediyse
-      if (gameData.status === "completed" && !gameData._completedShown) {
+      if (gameData.status === "completed" && !gameCompletedShown.current) {
         showGameResultPopup(gameData);
         // Tekrar göstermeyi önle
-        setGame({ ...gameData, _completedShown: true });
+        gameCompletedShown.current = true;
       }
     });
   };
@@ -252,6 +268,7 @@ export default function GameInterface({ gameId }) {
 
     // Oyunun bitme nedenine göre mesaj oluştur
     if (gameData.reason === "timeout") {
+      // Süre aşımı durumunda, kimin süresinin dolduğunu göster
       const timedOutPlayerName =
         gameData.timedOutPlayer === auth.currentUser?.uid
           ? "Sizin"
@@ -261,6 +278,7 @@ export default function GameInterface({ gameId }) {
 
       message = `${timedOutPlayerName} süreniz doldu! `;
     } else if (gameData.reason === "surrender") {
+      // Teslim olma durumunda, kimin teslim olduğunu göster
       const surrenderedPlayer =
         gameData.reason === auth.currentUser?.uid
           ? "Siz teslim oldunuz"
@@ -271,6 +289,8 @@ export default function GameInterface({ gameId }) {
       message = surrenderedPlayer + "! ";
     } else if (gameData.reason === "pass") {
       message = "Üst üste pas geçildiği için oyun sona erdi! ";
+    } else {
+      message = "Oyun normal şekilde tamamlandı";
     }
 
     // Kazanan durumu ekle
@@ -283,10 +303,10 @@ export default function GameInterface({ gameId }) {
     }
 
     message += `\n\n${gameData.player1.username}: ${gameData.player1.score} puan\n${gameData.player2.username}: ${gameData.player2.score} puan`;
-    console.log(message + " alerti kaldırdım kod: ");
-    /*Alert.alert(title, message, [
-  { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
-]); */
+
+    Alert.alert(title, message, [
+      { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
+    ]);
   };
 
   // Kullanıcının harflerini al
@@ -351,7 +371,7 @@ export default function GameInterface({ gameId }) {
     }
   };
 
-  // GameInterface.jsx içine eklenecek fonksiyon
+  // Hamleyi onayla ve sunucuya gönder
   const confirmMove = async () => {
     if (!isUserTurn()) {
       showTemporaryMessage("Şu anda sıra sizde değil!");
@@ -430,7 +450,6 @@ export default function GameInterface({ gameId }) {
   };
 
   // Hücre seçimi
-
   const handleCellPress = (row, col) => {
     console.log(`handleCellPress çağrıldı - Satır: ${row}, Sütun: ${col}`);
 
@@ -468,26 +487,31 @@ export default function GameInterface({ gameId }) {
     }
 
     // İlk yerleştirme mi (merkez yıldız kontrolü)
-    if (game.firstMove || game.centerRequired) {
+    // İlk hamle mutlaka merkez (7,7) hücresini içermelidir
+    if (
+      (game.firstMove || game.centerRequired) &&
+      selectedBoardCells.length === 0
+    ) {
       if (row !== 7 || col !== 7) {
         showTemporaryMessage("İlk harf ortadaki yıldıza yerleştirilmelidir!");
         return;
       }
-    } else if (selectedBoardCells.length === 0) {
+    } else if (
+      selectedBoardCells.length === 0 &&
+      !(game.firstMove || game.centerRequired)
+    ) {
       // İlk hamle değilse ve bu ilk seçilen hücreyse, mevcut bir harfe bitişik mi kontrol et
       const isAdjacent = checkIfAdjacentToExistingLetter(row, col, game.board);
       if (!isAdjacent) {
         showTemporaryMessage("Harf mevcut bir kelimeye bitişik olmalıdır!");
         return;
       }
-    } else {
+    } else if (selectedBoardCells.length >= 1) {
       // Bir sonraki harf, mevcut seçili harflerle aynı doğrultuda olmalı
-      if (selectedBoardCells.length >= 1) {
-        const isValidPlacement = checkValidPlacement(row, col);
-        if (!isValidPlacement) {
-          showTemporaryMessage("Harfler aynı doğrultuda yerleştirilmelidir!");
-          return;
-        }
+      const isValidPlacement = checkValidPlacement(row, col);
+      if (!isValidPlacement) {
+        showTemporaryMessage("Harfler aynı doğrultuda yerleştirilmelidir!");
+        return;
       }
     }
 
@@ -560,7 +584,7 @@ export default function GameInterface({ gameId }) {
     }
   };
 
-  // Geçerli yerleştirme kontrolü - Eksik fonksiyon!
+  // Geçerli yerleştirme kontrolü
   const checkValidPlacement = (row, col) => {
     if (selectedBoardCells.length === 0) {
       return true; // İlk harf için geçerli
@@ -720,6 +744,7 @@ export default function GameInterface({ gameId }) {
     setActiveReward(null);
   };
 
+  // Pas geç
   // Pas geç
   const handlePass = async () => {
     if (!isUserTurn()) {
