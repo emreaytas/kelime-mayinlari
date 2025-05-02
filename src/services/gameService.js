@@ -20,6 +20,7 @@ import {
 import { setupInitialGame } from "../utils/InitialsWordList";
 import { updateGameStatistics, saveGameRecord } from "./userStatsService";
 import { cleanFirebaseData } from "../utils/firebaseUtils"; // Adjust the path as needed
+
 // Hamle süresini kontrol et ve süresi dolanları işaretle
 export const checkGameTimers = async () => {
   try {
@@ -747,7 +748,9 @@ export const finishAndStoreGame = async (gameId, gameData) => {
 
     // Veri güvenliği için temizleme
     const cleanGameData = JSON.parse(JSON.stringify(gameData));
-    cleanGameDataForFirebase(cleanGameData);
+
+    // Clean the data for Firebase
+    cleanFirebaseData(cleanGameData);
 
     // 1. Firestore'a kaydedelim - saveGameRecord fonksiyonunu kullanıyoruz
     await saveGameRecord(gameId, cleanGameData);
@@ -786,7 +789,6 @@ export const finishAndStoreGame = async (gameId, gameData) => {
     throw error;
   }
 };
-
 export const endGame = async (gameId, reason) => {
   try {
     const game = await getGameData(gameId);

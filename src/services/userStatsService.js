@@ -274,6 +274,7 @@ export const saveGameRecord = async (gameId, gameData) => {
     throw error;
   }
 };
+
 function cleanFirebaseData(obj) {
   if (!obj || typeof obj !== "object") return;
 

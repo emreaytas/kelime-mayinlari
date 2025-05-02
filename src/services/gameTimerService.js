@@ -135,7 +135,6 @@ export const handleExpiredGame = async (gameId, gameData) => {
     return { error: error.message };
   }
 };
-
 /**
  * Saves game data to Firestore for permanent storage
  * @param {string} gameId - The game ID
@@ -143,10 +142,13 @@ export const handleExpiredGame = async (gameId, gameData) => {
  */
 export const saveGameToFirestore = async (gameId, gameData) => {
   try {
-    // Firestore'a kaydetmeden önce veriyi temizle
+    // Create a deep copy of the game data
     const cleanGameData = JSON.parse(JSON.stringify(gameData));
 
-    // Timestamp'leri düzgün formata çevir
+    // Clean the data (convert nested arrays to objects)
+    cleanFirebaseData(cleanGameData);
+
+    // Convert timestamps to Firestore format
     const firestoreData = {
       ...cleanGameData,
       completedAt: Timestamp.fromMillis(
@@ -159,7 +161,7 @@ export const saveGameToFirestore = async (gameId, gameData) => {
       savedAt: Timestamp.now(),
     };
 
-    // Firestore'a kaydet
+    // Save to Firestore
     await setDoc(doc(firestore, "games", gameId), firestoreData);
 
     return { success: true };
@@ -168,7 +170,6 @@ export const saveGameToFirestore = async (gameId, gameData) => {
     throw error;
   }
 };
-
 /**
  * Checks a specific game's timer
  * @param {string} gameId - The game ID to check
