@@ -441,8 +441,6 @@ export default function GameInterface({ gameId }) {
     }
 
     // Merkez yıldız kontrolünü kaldırıyoruz
-    // İlk hamle kontrolü - kelime merkeze temas ediyor mu? (KALDIRDIK)
-
     // İlk hamle değilse mevcut bir harfe temas ediyor mu kontrolü
     if (!game.firstMove) {
       // Herhangi bir mevcut harfe temas ediyor mu kontrol et
@@ -547,7 +545,6 @@ export default function GameInterface({ gameId }) {
       setConfirmingAction(false);
     }
   };
-
   // Çapraz kelimeleri kontrol eden yeni fonksiyon
   const checkCrossWords = (placedCells, board) => {
     const crossWords = [];
@@ -632,8 +629,7 @@ export default function GameInterface({ gameId }) {
     });
 
     return crossWords;
-  };
-  // Özel etki mesajını oluşturan yardımcı fonksiyon
+  }; // Özel etki mesajını oluşturan yardımcı fonksiyon
   const getEffectMessage = (effects) => {
     if (effects.pointDivision) {
       return "Puan Bölünmesi: Puanınızın yalnızca %30'unu aldınız!";
@@ -749,6 +745,27 @@ export default function GameInterface({ gameId }) {
     });
 
     setCurrentWord(word);
+  };
+
+  const determineDirection = (cells) => {
+    if (cells.length < 2) return; // En az 2 hücre gerekli
+
+    // İlk iki hücreyi kullanarak yönü belirle
+    const cell1 = cells[0];
+    const cell2 = cells[1];
+
+    if (cell1.row === cell2.row) {
+      // Aynı satırdaysa yatay yerleştirme
+      setPlacementDirection("horizontal");
+    } else if (cell1.col === cell2.col) {
+      // Aynı sütundaysa dikey yerleştirme
+      setPlacementDirection("vertical");
+    } else {
+      // Çapraz yerleştirme (oyun kurallarına göre desteklenmiyorsa null olarak bırakılabilir)
+      setPlacementDirection(null);
+    }
+
+    console.log("Yerleştirme yönü belirlendi:", placementDirection);
   };
 
   const checkIfAdjacentToExistingLetter = (row, col, board) => {
