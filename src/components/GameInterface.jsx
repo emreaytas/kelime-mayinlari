@@ -42,6 +42,7 @@ export default function GameInterface({ gameId }) {
   const [selectedRackIndices, setSelectedRackIndices] = useState([]);
   const [selectedBoardCells, setSelectedBoardCells] = useState([]);
   const [gameResult, setGameResult] = useState(null);
+  const [visibleRack, setVisibleRack] = useState([]);
 
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
@@ -68,6 +69,29 @@ export default function GameInterface({ gameId }) {
 
   // useRef ile timer referansını tutma
   const toastTimer = useRef(null);
+
+  useEffect(() => {
+    if (game) {
+      const userRack = getUserRack();
+      // Seçili hücreler için kullanılan harflerin indekslerini al
+      const usedIndices = selectedBoardCells.map((cell) => cell.rackIndex);
+
+      // Kullanılmayan harfleri içeren yeni bir raf oluştur
+      const updatedRack = userRack.filter(
+        (_, index) => !usedIndices.includes(index)
+      );
+
+      // Görünür rafı güncelle
+      setVisibleRack(updatedRack);
+    }
+  }, [game, selectedBoardCells]);
+
+  useEffect(() => {
+    // Oyun verisi değiştiğinde, görünür rafı başlangıçta ayarla
+    if (game) {
+      setVisibleRack(getUserRack());
+    }
+  }, [game]);
 
   useEffect(() => {
     if (!game || !isUserTurn() || !gameId) return;
@@ -1180,9 +1204,6 @@ export default function GameInterface({ gameId }) {
                 ? "12 Saat"
                 : "24 Saat"}
             </Text>
-            <Text style={styles.statsText}>
-              Başlangıç Kelimesi: {game.initialWord || "Bilinmiyor"}
-            </Text>
           </View>
 
           <TouchableOpacity
@@ -1277,7 +1298,7 @@ export default function GameInterface({ gameId }) {
       {/* Harf Rafı */}
       <View style={styles.rackContainer}>
         <LetterRack
-          letters={userRack}
+          letters={visibleRack}
           selectedIndices={selectedRackIndices}
           onTilePress={handleRackTileSelect}
         />
