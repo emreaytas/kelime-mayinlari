@@ -889,17 +889,37 @@ export default function GameInterface({ gameId }) {
 
   // Tüm seçimleri sıfırla
   const resetSelections = () => {
+    // Clear all selected board cells
     setSelectedBoardCells([]);
-    setSelectedRackIndices([]);
-    setPlacementDirection(null);
-    setCurrentWord("");
-    setWordValid(false);
-    setEarnedPoints(0);
-    setActiveReward(null);
-  };
 
+    // Clear all selected rack indices
+    setSelectedRackIndices([]);
+
+    // Reset placement direction
+    setPlacementDirection(null);
+
+    // Clear current word
+    setCurrentWord("");
+
+    // Reset word validation status
+    setWordValid(false);
+
+    // Reset earned points
+    setEarnedPoints(0);
+
+    // Reset active reward
+    setActiveReward(null);
+
+    // Update visible rack to match the user's full rack
+    if (game) {
+      setVisibleRack(getUserRack());
+    }
+
+    console.log("Tüm seçimler ve değişiklikler sıfırlandı.");
+  };
   // Pas geç
-  // Pas geç
+  // Updated handlePass function for GameInterface.jsx
+
   const handlePass = async () => {
     if (!isUserTurn()) {
       Alert.alert("Uyarı", "Şu anda sıra sizde değil!");
@@ -912,15 +932,28 @@ export default function GameInterface({ gameId }) {
         text: "Pas Geç",
         onPress: async () => {
           try {
-            setConfirmingAction(true);
-            await passTurn(gameId);
+            // First, reset all selections and changes before sending to server
             resetSelections();
+
+            // Then show loading indicator
+            setConfirmingAction(true);
+
+            // Send pass action to server
+            await passTurn(gameId);
+
+            // Log pass action
+            console.log("Pas geçildi, tüm seçimler temizlendi.");
           } catch (error) {
+            // Show error if pass failed
             Alert.alert(
               "Hata",
               error.message || "Pas geçilirken bir sorun oluştu"
             );
+
+            // Reset selections again in case of error
+            resetSelections();
           } finally {
+            // Hide loading indicator
             setConfirmingAction(false);
           }
         },
