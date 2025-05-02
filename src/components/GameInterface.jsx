@@ -440,21 +440,12 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // İlk hamle kontrolü - kelime merkeze temas ediyor mu?
-    if (game.firstMove || game.centerRequired) {
-      const touchesCenter = selectedBoardCells.some(
-        (cell) => cell.row === 7 && cell.col === 7
-      );
+    // Merkez yıldız kontrolünü kaldırıyoruz
+    // İlk hamle kontrolü - kelime merkeze temas ediyor mu? (KALDIRDIK)
 
-      if (!touchesCenter) {
-        Alert.alert(
-          "Uyarı",
-          "İlk hamle için kelimenizin bir harfi merkez yıldıza temas etmelidir!"
-        );
-        return;
-      }
-    } else {
-      // İlk hamle değilse herhangi bir mevcut harfe temas ediyor mu kontrol et
+    // İlk hamle değilse mevcut bir harfe temas ediyor mu kontrolü
+    if (!game.firstMove) {
+      // Herhangi bir mevcut harfe temas ediyor mu kontrol et
       const touchesExistingLetter = selectedBoardCells.some((cell) => {
         return checkIfAdjacentToExistingLetter(cell.row, cell.col, game.board);
       });
@@ -496,7 +487,7 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Kelime wordList'te var mı kontrol et
+    // Asıl kelimemizi doğrula
     const isValid = validateWord(word.toLowerCase());
     setWordValid(isValid);
 
@@ -508,10 +499,48 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
+    // Çapraz kelime kontrolü ekliyoruz
+    // Yerleştirdiğimiz harfler mevcut harflerle birlikte başka kelimeler oluşturuyor mu?
+    const crossWords = checkCrossWords(selectedBoardCells, game.board);
+
+    // Çapraz kelimeler de geçerli olmalı
+    for (const crossWord of crossWords) {
+      if (!validateWord(crossWord.toLowerCase())) {
+        Alert.alert(
+          "Geçersiz Çapraz Kelime",
+          `Oluşturduğunuz "${crossWord}" kelimesi sözlükte bulunamadı. Tüm oluşturulan kelimeler geçerli olmalıdır.`
+        );
+        return;
+      }
+    }
+
     // Hamleyi onayla ve devam et...
     try {
       setConfirmingAction(true);
-      // ... (kalan kod)
+
+      // Kelime yerleştirme işlemini gerçekleştir
+      const result = await placeWord(gameId, selectedBoardCells);
+
+      if (result.success) {
+        // Yerleştirme başarılı, seçimleri sıfırla
+        resetSelections();
+
+        // Özel etki varsa göster
+        if (Object.keys(result.effects || {}).length > 0) {
+          setSpecialPopup({
+            title: "Özel Etki Tetiklendi!",
+            message: getEffectMessage(result.effects),
+          });
+        }
+
+        // Ödül kazanıldıysa göster
+        if (result.rewards && result.rewards.length > 0) {
+          setSpecialPopup({
+            title: "Ödül Kazandınız!",
+            message: `${result.rewards.join(", ")} ödülü kazandınız!`,
+          });
+        }
+      }
     } catch (error) {
       Alert.alert("Hata", error.message || "Hamle yapılırken bir sorun oluştu");
     } finally {
@@ -519,6 +548,106 @@ export default function GameInterface({ gameId }) {
     }
   };
 
+  // Çapraz kelimeleri kontrol eden yeni fonksiyon
+  const checkCrossWords = (placedCells, board) => {
+    const crossWords = [];
+
+    // Her yerleştirilen hücre için çapraz kelime kontrolü yap
+    placedCells.forEach((cell) => {
+      const { row, col } = cell;
+
+      // Yatay ve dikey olarak kontrol et
+      const directions = [
+        { isVertical: true }, // Dikey kontrol
+        { isVertical: false }, // Yatay kontrol
+      ];
+
+      directions.forEach(({ isVertical }) => {
+        // Yerleştirme yönüne dik ise kontrol et
+        const shouldCheck =
+          (isVertical && placementDirection !== "vertical") ||
+          (!isVertical && placementDirection !== "horizontal");
+
+        if (shouldCheck) {
+          // Kelimenin başlangıç noktasını bul
+          let startPos = isVertical ? row : col;
+          while (
+            startPos > 0 &&
+            board[isVertical ? startPos - 1 : row][
+              isVertical ? col : startPos - 1
+            ]?.letter
+          ) {
+            startPos--;
+          }
+
+          // Kelimenin sonunu bul
+          let endPos = isVertical ? row : col;
+          while (
+            endPos < 14 &&
+            board[isVertical ? endPos + 1 : row][isVertical ? col : endPos + 1]
+              ?.letter
+          ) {
+            endPos++;
+          }
+
+          // Kelime en az 2 harfli olmalı
+          if (endPos - startPos >= 1) {
+            // Kelimeyi oluştur
+            let crossWord = "";
+            for (let i = startPos; i <= endPos; i++) {
+              const currRow = isVertical ? i : row;
+              const currCol = isVertical ? col : i;
+
+              // Tahta üzerinde harf varsa al
+              if (board[currRow][currCol]?.letter) {
+                crossWord += board[currRow][currCol].letter;
+              } else {
+                // Tahtada harf yoksa yerleştirilen harflerden kontrol et
+                const placedCell = placedCells.find(
+                  (pc) => pc.row === currRow && pc.col === currCol
+                );
+
+                if (placedCell) {
+                  const rack = getUserRack();
+                  const letterObj = rack[placedCell.rackIndex];
+                  const letter =
+                    typeof letterObj === "object"
+                      ? letterObj.letter
+                      : letterObj;
+                  crossWord += letter === "JOKER" ? "*" : letter;
+                } else {
+                  // Ne tahtada ne de yerleştirilen harflerde yoksa (olmamalı)
+                  crossWord += "?";
+                }
+              }
+            }
+
+            // Kelime en az 2 harfli ve yeni oluşturulmuş bir kelime ise ekle
+            if (crossWord.length >= 2 && !crossWord.includes("?")) {
+              crossWords.push(crossWord);
+            }
+          }
+        }
+      });
+    });
+
+    return crossWords;
+  };
+  // Özel etki mesajını oluşturan yardımcı fonksiyon
+  const getEffectMessage = (effects) => {
+    if (effects.pointDivision) {
+      return "Puan Bölünmesi: Puanınızın yalnızca %30'unu aldınız!";
+    } else if (effects.pointTransfer) {
+      return "Puan Transferi: Puanlarınız rakibinize transfer edildi!";
+    } else if (effects.letterLoss) {
+      return "Harf Kaybı: Elinizdeki tüm harfler değiştirildi!";
+    } else if (effects.moveBlockade) {
+      return "Ekstra Hamle Engeli: Harf ve kelime çarpanları iptal edildi!";
+    } else if (effects.wordCancellation) {
+      return "Kelime İptali: Bu hamlede puan alamadınız!";
+    }
+    return "Özel bir etki tetiklendi!";
+  };
   // Hücre seçimi
   const handleCellPress = (row, col) => {
     console.log(`handleCellPress çağrıldı - Satır: ${row}, Sütun: ${col}`);
