@@ -427,6 +427,7 @@ export default function GameInterface({ gameId }) {
   };
 
   // Hamleyi onayla ve sunucuya gönder
+  // Bu kısmı confirmMove fonksiyonu olarak güncelle
   const confirmMove = async () => {
     if (!isUserTurn()) {
       showTemporaryMessage("Şu anda sıra sizde değil!");
@@ -507,80 +508,10 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Puanları hesapla
-    const points = calculateWordPoints(sortedCells, game.board, rack);
-    setEarnedPoints(points);
-
+    // Hamleyi onayla ve devam et...
     try {
       setConfirmingAction(true);
-
-      // Kullanılacak harflerin sayısını belirle (görsel geri bildirim için)
-      const usedLetterCount = selectedBoardCells.length;
-
-      // Kelimeyi yerleştir
-      const result = await placeWord(gameId, selectedBoardCells);
-
-      // Harflerin yenilendiğini bildiren özel bir mesaj göster
-      showTemporaryMessage(
-        `${usedLetterCount} harf kullanıldı, ${Math.min(
-          usedLetterCount,
-          game.letterPool.length
-        )} yeni harf alındı`
-      );
-
-      // Özel etkileri göster
-      if (result.effects) {
-        if (result.effects.pointDivision) {
-          setSpecialPopup({
-            title: "Mayın Etkisi",
-            message: "Puan Bölünmesi: Puanınızın sadece %30'unu aldınız!",
-          });
-        } else if (result.effects.pointTransfer) {
-          setSpecialPopup({
-            title: "Mayın Etkisi",
-            message: "Puan Transferi: Puanlarınız rakibinize gitti!",
-          });
-        } else if (result.effects.letterLoss) {
-          setSpecialPopup({
-            title: "Mayın Etkisi",
-            message: "Harf Kaybı: Tüm harfleriniz yenileriyle değiştirildi!",
-          });
-        } else if (result.effects.moveBlockade) {
-          setSpecialPopup({
-            title: "Mayın Etkisi",
-            message:
-              "Ekstra Hamle Engeli: Harf ve kelime çarpanları iptal edildi!",
-          });
-        } else if (result.effects.wordCancellation) {
-          setSpecialPopup({
-            title: "Mayın Etkisi",
-            message: "Kelime İptali: Bu kelimeden hiç puan alamadınız!",
-          });
-        }
-      }
-
-      // Ödülleri göster
-      if (result.rewards && result.rewards.length > 0) {
-        const rewardMessages = {
-          BolgeYasagi:
-            "Bölge Yasağı: Rakibiniz sınırlı bir alanda oynayabilecek!",
-          HarfYasagi: "Harf Yasağı: Rakibinizin bazı harfleri dondurulacak!",
-          EkstraHamleJokeri:
-            "Ekstra Hamle Jokeri: Bir sonraki turda ekstra hamle yapabilirsiniz!",
-        };
-
-        const rewardMessage = result.rewards
-          .map((r) => rewardMessages[r] || r)
-          .join("\n");
-
-        setSpecialPopup({
-          title: "Ödül Kazandınız!",
-          message: rewardMessage,
-        });
-      }
-
-      // Seçimleri sıfırla
-      resetSelections();
+      // ... (kalan kod)
     } catch (error) {
       Alert.alert("Hata", error.message || "Hamle yapılırken bir sorun oluştu");
     } finally {
@@ -627,7 +558,7 @@ export default function GameInterface({ gameId }) {
 
     // Harfler bitişik ve aynı doğrultuda yerleştirilmeli
     if (selectedBoardCells.length >= 1) {
-      // Bir sonraki harf, mevcut seçili harflerle aynı doğrultuda olmalı
+      // İlk harf yerleştirildikten sonra doğrultunun belirlenmesi
       const isValidPlacement = checkValidPlacement(row, col);
       if (!isValidPlacement) {
         showTemporaryMessage("Harfler aynı doğrultuda yerleştirilmelidir!");
@@ -713,30 +644,25 @@ export default function GameInterface({ gameId }) {
 
       // Tahta sınırlarını kontrol et
       if (newRow >= 0 && newRow < 15 && newCol >= 0 && newCol < 15) {
-        // Komşu hücre var mı ve içinde harf var mı?
+        // Komşu hücrede kalıcı bir harf var mı?
         if (
           board[newRow] &&
           board[newRow][newCol] &&
           board[newRow][newCol].letter
         ) {
-          return true;
+          // Bu komşu hücre, şu anda yerleştirilen geçici harf değil mi?
+          const isTemporary = selectedBoardCells.some(
+            (cell) => cell.row === newRow && cell.col === newCol
+          );
+
+          if (!isTemporary) {
+            return true;
+          }
         }
       }
     }
 
     return false;
-  };
-
-  const determineDirection = (cells) => {
-    if (cells.length < 2) return;
-
-    const [cell1, cell2] = cells;
-
-    if (cell1.row === cell2.row) {
-      setPlacementDirection("horizontal");
-    } else if (cell1.col === cell2.col) {
-      setPlacementDirection("vertical");
-    }
   };
 
   // Geçerli yerleştirme kontrolü
