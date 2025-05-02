@@ -41,6 +41,7 @@ export default function GameInterface({ gameId }) {
   const [remainingTime, setRemainingTime] = useState(null);
   const [selectedRackIndices, setSelectedRackIndices] = useState([]);
   const [selectedBoardCells, setSelectedBoardCells] = useState([]);
+  const [gameResult, setGameResult] = useState(null);
 
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
@@ -121,7 +122,10 @@ export default function GameInterface({ gameId }) {
   useEffect(() => {
     // Oyun tamamlandıysa ve daha önce popup gösterilmediyse
     if (game && game.status === "completed" && !gameCompletedShown.current) {
-      showGameResultPopup(game);
+      // Oyun sonuç bilgilerini al
+      const result = showGameResultPopup(game);
+      setGameResult(result);
+
       // Tekrar göstermeyi önle
       gameCompletedShown.current = true;
     }
@@ -281,12 +285,11 @@ export default function GameInterface({ gameId }) {
     const player2Won = gameData.player2.score > gameData.player1.score;
     const isDraw = gameData.player1.score === gameData.player2.score;
 
-    let title = "Oyun Bitti";
-    let message = "";
+    let resultMessage = "";
+    let resultType = ""; // "win", "loss", "draw"
 
     // Oyunun bitme nedenine göre mesaj oluştur
     if (gameData.reason === "timeout") {
-      // Süre aşımı durumunda, kimin süresinin dolduğunu göster
       const timedOutPlayerName =
         gameData.timedOutPlayer === auth.currentUser?.uid
           ? "Sizin"
@@ -294,9 +297,8 @@ export default function GameInterface({ gameId }) {
           ? gameData.player2.username
           : gameData.player1.username;
 
-      message = `${timedOutPlayerName} süreniz doldu! `;
+      resultMessage = `${timedOutPlayerName} süreniz doldu!`;
     } else if (gameData.reason === "surrender") {
-      // Teslim olma durumunda, kimin teslim olduğunu göster
       const surrenderedPlayer =
         gameData.reason === auth.currentUser?.uid
           ? "Siz teslim oldunuz"
@@ -304,27 +306,38 @@ export default function GameInterface({ gameId }) {
               isPlayer1 ? gameData.player2.username : gameData.player1.username
             } teslim oldu`;
 
-      message = surrenderedPlayer + "! ";
+      resultMessage = surrenderedPlayer;
     } else if (gameData.reason === "pass") {
-      message = "Üst üste pas geçildiği için oyun sona erdi! ";
+      resultMessage = "Üst üste pas geçildiği için oyun sona erdi!";
     } else {
-      message = "Oyun normal şekilde tamamlandı";
+      resultMessage = "Oyun normal şekilde tamamlandı";
     }
 
     // Kazanan durumu ekle
     if (isDraw) {
-      message += "Oyun berabere bitti!";
+      resultMessage += " - Oyun berabere bitti!";
+      resultType = "draw";
     } else if ((isPlayer1 && player1Won) || (!isPlayer1 && player2Won)) {
-      message += "Tebrikler, oyunu kazandınız!";
+      resultMessage += " - Tebrikler, oyunu kazandınız!";
+      resultType = "win";
     } else {
-      message += "Üzgünüm, oyunu kaybettiniz.";
+      resultMessage += " - Üzgünüm, oyunu kaybettiniz.";
+      resultType = "loss";
     }
 
-    message += `\n\n${gameData.player1.username}: ${gameData.player1.score} puan\n${gameData.player2.username}: ${gameData.player2.score} puan`;
-
-    Alert.alert(title, message, [
-      { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
-    ]);
+    // Bilgileri state'e kaydet
+    return {
+      resultMessage,
+      resultType,
+      player1: {
+        username: gameData.player1.username,
+        score: gameData.player1.score,
+      },
+      player2: {
+        username: gameData.player2.username,
+        score: gameData.player2.score,
+      },
+    };
   };
 
   // Kullanıcının harflerini al
@@ -1372,6 +1385,35 @@ export default function GameInterface({ gameId }) {
         </View>
       </Modal>
 
+      {gameResult && (
+        <View style={styles.gameResultBanner}>
+          <Text
+            style={[
+              styles.gameResultText,
+              gameResult.resultType === "win" && styles.winText,
+              gameResult.resultType === "loss" && styles.lossText,
+              gameResult.resultType === "draw" && styles.drawText,
+            ]}
+          >
+            {gameResult.resultMessage}
+          </Text>
+          <View style={styles.gameResultScores}>
+            <Text style={styles.gameResultScoreText}>
+              {gameResult.player1.username}: {gameResult.player1.score} puan
+            </Text>
+            <Text style={styles.gameResultScoreText}>
+              {gameResult.player2.username}: {gameResult.player2.score} puan
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.homeButton}
+            onPress={() => router.replace("/home")}
+          >
+            <Text style={styles.homeButtonText}>Ana Sayfaya Dön</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Yükleme İndikatörü */}
       {confirmingAction && (
         <View style={styles.loadingOverlay}>
@@ -1670,5 +1712,37 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: "center",
     width: "100%",
+  },
+  gameResultBanner: {
+    backgroundColor: "#f0f0f0",
+    padding: 15,
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#ccc",
+  },
+  gameResultText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  winText: {
+    color: "#4CAF50",
+  },
+  lossText: {
+    color: "#F44336",
+  },
+  gameResultScores: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: 15,
+  },
+  gameResultScoreText: {
+    fontSize: 14,
+  },
+  homeButtonText: {
+    color: "white",
+    fontWeight: "bold",
   },
 });
