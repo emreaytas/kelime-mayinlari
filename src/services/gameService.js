@@ -394,6 +394,8 @@ export const listenToGameChanges = (gameId, callback) => {
   }
 };
 
+
+
 export const placeWord = async (gameId, placedCells) => {
   try {
     if (!auth.currentUser) {
@@ -414,12 +416,48 @@ export const placeWord = async (gameId, placedCells) => {
     const isPlayer1 = game.player1.id === userId;
     const userRack = isPlayer1 ? game.player1Rack : game.player2Rack;
 
-    // Tahta kopyası oluştur
-    const boardCopy = JSON.parse(JSON.stringify(game.board));
+    // Tahta kopyası oluştur - BURADA NORMALİZASYON YAPALIM
+    let boardCopy = [];
+
+    // Firebase'den gelen tahta formatını normalize et
+    if (Array.isArray(game.board)) {
+      // Eğer tahta zaten dizi formatındaysa
+      boardCopy = JSON.parse(JSON.stringify(game.board));
+    } else {
+      // Firebase nesne formatındaysa normalize et
+      boardCopy = [];
+      for (let i = 0; i < 15; i++) {
+        boardCopy[i] = [];
+        for (let j = 0; j < 15; j++) {
+          if (game.board && game.board[i] && game.board[i][j]) {
+            boardCopy[i][j] = { ...game.board[i][j] };
+          } else {
+            boardCopy[i][j] = {
+              letter: null,
+              type: null,
+              special: null,
+            };
+          }
+        }
+      }
+    }
 
     // Harfleri yerleştir
     placedCells.forEach((cell) => {
       const { row, col, rackIndex } = cell;
+
+      // Güvenlik kontrolü
+      if (!boardCopy[row]) {
+        boardCopy[row] = [];
+      }
+      if (!boardCopy[row][col]) {
+        boardCopy[row][col] = {
+          letter: null,
+          type: null,
+          special: null,
+        };
+      }
+
       const letterObj = userRack[rackIndex];
       const letter =
         typeof letterObj === "object" ? letterObj.letter : letterObj;

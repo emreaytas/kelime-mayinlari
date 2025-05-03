@@ -276,30 +276,16 @@ export default function GameInterface({ gameId }) {
         return;
       }
 
-      // Ensure board is properly normalized
+      // Tahtayı kesinlikle normalize et
       if (gameData.board) {
-        const normalizedBoard = normalizeBoard(gameData.board);
-        if (normalizedBoard) {
-          gameData.board = normalizedBoard;
-
-          // Verify the specific cell that was causing issues
-          if (normalizedBoard[8] && normalizedBoard[8][7]) {
-            console.log("board[8][7] is now defined:", normalizedBoard[8][7]);
-          }
-        } else {
-          console.error("Failed to normalize board!");
-          // Create an empty board as fallback
-          gameData.board = createEmptyBoard();
-        }
+        gameData.board = normalizeCompleteBoard(gameData.board);
       } else {
-        // If no board exists, create an empty one
         gameData.board = createEmptyBoard();
       }
 
       // Update game state
       setGame(gameData);
       console.log("Oyun verileri güncellendi:", gameData);
-
       // Seçimleri temizle - bu özellikle diğer kullanıcının hamlelerinden sonra önemli
       if (
         gameData.turnPlayer === auth.currentUser?.uid &&
@@ -332,6 +318,51 @@ export default function GameInterface({ gameId }) {
       board.push(row);
     }
     return board;
+  };
+
+  const normalizeCompleteBoard = (boardData) => {
+    const normalizedBoard = [];
+
+    for (let i = 0; i < 15; i++) {
+      normalizedBoard[i] = [];
+      for (let j = 0; j < 15; j++) {
+        // Varsayılan boş hücre
+        let cell = {
+          letter: null,
+          type: getCellType(i, j),
+          special: null,
+        };
+
+        // Firebase verisini kontrol et
+        if (boardData) {
+          if (Array.isArray(boardData)) {
+            // Dizi formatı
+            if (boardData[i] && boardData[i][j]) {
+              cell = { ...cell, ...boardData[i][j] };
+            }
+          } else if (typeof boardData === "object") {
+            // Nesne formatı
+            if (boardData[i]) {
+              if (Array.isArray(boardData[i])) {
+                if (boardData[i][j]) {
+                  cell = { ...cell, ...boardData[i][j] };
+                }
+              } else if (typeof boardData[i] === "object") {
+                if (boardData[i][j] || boardData[i][j.toString()]) {
+                  const cellData =
+                    boardData[i][j] || boardData[i][j.toString()];
+                  cell = { ...cell, ...cellData };
+                }
+              }
+            }
+          }
+        }
+
+        normalizedBoard[i][j] = cell;
+      }
+    }
+
+    return normalizedBoard;
   };
 
   // Oyun sonucunu göster
