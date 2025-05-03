@@ -440,7 +440,6 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Merkez yıldız kontrolünü kaldırıyoruz
     // İlk hamle değilse mevcut bir harfe temas ediyor mu kontrolü
     if (!game.firstMove) {
       // Herhangi bir mevcut harfe temas ediyor mu kontrol et
@@ -669,14 +668,14 @@ export default function GameInterface({ gameId }) {
     // Seçilen raf indeksini al
     const rackIndex = selectedRackIndices[0];
 
-    // Hücre var mı kontrol et (kritik güvenlik kontrolü)
-    if (!game.board[row] || game.board[row][col] === undefined) {
+    // Hücre var mı kontrol et (güvenlik kontrolü güncellendi)
+    if (!game.board[row] || !game.board[row][col]) {
       console.error(`Geçersiz hücre koordinatları: (${row}, ${col})`);
       return;
     }
 
     // Hücre dolu mu kontrol et
-    if (game.board[row][col] && game.board[row][col].letter) {
+    if (game.board[row][col].letter) {
       showTemporaryMessage("Bu hücre zaten dolu!");
       return;
     }
