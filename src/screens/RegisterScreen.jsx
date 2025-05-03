@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from "react-native";
+
 import { router } from "expo-router";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
@@ -34,7 +35,7 @@ export default function RegisterScreen() {
     return re.test(email.toLowerCase());
   };
 
-  // Validate password strength (min 8 chars, has uppercase, lowercase and number)
+  // şifreyi kontrol edeceğiz hocam...
   const validatePassword = (password) => {
     const re = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     return re.test(password);

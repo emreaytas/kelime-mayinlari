@@ -2535,6 +2535,7 @@ export default function GameInterface({ gameId }) {
   );
 }
 
+// stilleri buraya koydum çek çek kullan mantığı hocam.
 const styles = StyleSheet.create({
   container: {
     flex: 1,
