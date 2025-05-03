@@ -622,8 +622,12 @@ export default function GameInterface({ gameId }) {
   };
   // Bu kısmı confirmMove fonksiyonu olarak güncelle
   // src/components/GameInterface.jsx içindeki confirmMove fonksiyonunu güncelleyelim
-
   const confirmMove = async () => {
+    console.log("confirmMove çağrıldı");
+    console.log("isUserTurn():", isUserTurn());
+    console.log("wordValid:", wordValid);
+    console.log("currentWord:", currentWord);
+    console.log("selectedBoardCells:", selectedBoardCells);
     if (!isUserTurn()) {
       showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
@@ -635,7 +639,8 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // MERKEZ KONTROLÜNÜ KALDIRDIK
+    // İlk hamle kontrolü - KALDIRILDI
+    // Oyunda başlangıç kelimesi otomatik olarak yerleştirildiği için bu kontrolü kaldırıyoruz
 
     // Kelimeyi sıralı hücrelerden oluştur
     const sortedCells = [...selectedBoardCells].sort((a, b) => {
@@ -665,9 +670,8 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Asıl kelimemizi doğrula
+    // Kelime doğrulama
     const isValid = validateWord(word.toLowerCase());
-    setWordValid(isValid);
 
     if (!isValid) {
       Alert.alert(
@@ -677,7 +681,10 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Hamleyi onayla ve devam et...
+    // Puan hesaplama (önizleme)
+    const previewPoints = calculateWordPoints(sortedCells, game.board, rack);
+    console.log(`Kelime: ${word}, Önizleme puanı: ${previewPoints}`);
+
     try {
       setConfirmingAction(true);
 
@@ -688,20 +695,50 @@ export default function GameInterface({ gameId }) {
         // Yerleştirme başarılı, seçimleri sıfırla
         resetSelections();
 
-        // Özel etki varsa göster
-        if (Object.keys(result.effects || {}).length > 0) {
-          setSpecialPopup({
-            title: "Özel Etki Tetiklendi!",
-            message: getEffectMessage(result.effects),
-          });
+        // Kazanılan puanı göster
+        if (result.points !== undefined) {
+          showTemporaryMessage(`+${result.points} puan kazandınız!`);
+        }
+
+        // Mayın etkileri varsa göster
+        if (result.effects && Object.keys(result.effects).length > 0) {
+          // Mayın etkilerini setTimeout ile göster (toast'tan sonra)
+          setTimeout(() => {
+            setSpecialPopup({
+              title: "Mayına Bastınız!",
+              message: getMineEffectMessage(result.effects),
+            });
+          }, 1000);
         }
 
         // Ödül kazanıldıysa göster
         if (result.rewards && result.rewards.length > 0) {
-          setSpecialPopup({
-            title: "Ödül Kazandınız!",
-            message: `${result.rewards.join(", ")} ödülü kazandınız!`,
-          });
+          setTimeout(
+            () => {
+              setSpecialPopup({
+                title: "Ödül Kazandınız!",
+                message: `${result.rewards
+                  .map(getRewardDisplayName)
+                  .join(", ")} ödülü kazandınız!`,
+              });
+            },
+            result.effects ? 2000 : 1000
+          ); // Mayın varsa daha sonra göster
+        }
+
+        // Sıra devredildi bilgisi
+        if (result.nextPlayer) {
+          console.log(
+            `Sıra ${
+              result.nextPlayer === auth.currentUser.uid ? "sizde" : "rakipte"
+            }`
+          );
+        }
+
+        // Oyun bitti mi kontrolü
+        if (result.gameEnded) {
+          // Oyun bitişi otomatik olarak GameInterface tarafından handle edilecek
+          console.log("Oyun sona erdi!");
         }
       }
     } catch (error) {
@@ -709,6 +746,40 @@ export default function GameInterface({ gameId }) {
     } finally {
       setConfirmingAction(false);
     }
+  };
+
+  const getMineEffectMessage = (effects) => {
+    const messages = [];
+
+    if (effects.pointDivision) {
+      messages.push("Puan Bölünmesi: Puanınızın sadece %30'unu aldınız!");
+    }
+    if (effects.pointTransfer) {
+      messages.push("Puan Transferi: Puanlarınız rakibinize transfer edildi!");
+    }
+    if (effects.letterLoss) {
+      messages.push("Harf Kaybı: Elinizdeki tüm harfler değiştirildi!");
+    }
+    if (effects.moveBlockade) {
+      messages.push(
+        "Ekstra Hamle Engeli: Harf ve kelime çarpanları iptal edildi!"
+      );
+    }
+    if (effects.wordCancellation) {
+      messages.push("Kelime İptali: Bu hamlede puan alamadınız!");
+    }
+
+    return messages.join("\n");
+  };
+
+  const getRewardDisplayName = (rewardType) => {
+    const rewardNames = {
+      BolgeYasagi: "Bölge Yasağı",
+      HarfYasagi: "Harf Yasağı",
+      EkstraHamleJokeri: "Ekstra Hamle Jokeri",
+    };
+
+    return rewardNames[rewardType] || rewardType;
   };
   // Çapraz kelimeleri kontrol eden yeni fonksiyon
   const checkCrossWords = (placedCells, board) => {
@@ -997,6 +1068,33 @@ export default function GameInterface({ gameId }) {
     });
 
     setCurrentWord(word);
+
+    // Kelime en az 2 harf ise geçerliliğini kontrol et
+    if (word.length >= 2) {
+      // Debug için kelimeyi logla
+      console.log("Oluşturulan kelime:", word);
+
+      // Joker (*) karakterlerini kontrol için geçici olarak A harfine çevir
+      const wordToValidate = word.replace(/\*/g, "A").toLowerCase();
+      console.log("Doğrulanacak kelime:", wordToValidate);
+
+      const isValid = validateWord(wordToValidate);
+      console.log("Kelime geçerli mi?", isValid);
+
+      setWordValid(isValid);
+
+      if (isValid) {
+        // Puan hesapla
+        const points = calculateWordPoints(sortedCells, game.board, rack);
+        setEarnedPoints(points);
+        console.log("Hesaplanan puan:", points);
+      } else {
+        setEarnedPoints(0);
+      }
+    } else {
+      setWordValid(false);
+      setEarnedPoints(0);
+    }
   };
 
   const determineDirection = (cells) => {
@@ -1647,7 +1745,6 @@ export default function GameInterface({ gameId }) {
           >
             <Text style={styles.buttonText}>Pas</Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[
               styles.button,
@@ -1655,7 +1752,13 @@ export default function GameInterface({ gameId }) {
               (!wordValid || !isUserTurn() || confirmingAction) &&
                 styles.disabledButton,
             ]}
-            onPress={confirmMove}
+            onPress={() => {
+              console.log("Onayla butonuna tıklandı");
+              console.log("wordValid:", wordValid);
+              console.log("isUserTurn():", isUserTurn());
+              console.log("confirmingAction:", confirmingAction);
+              confirmMove();
+            }}
             disabled={!wordValid || !isUserTurn() || confirmingAction}
           >
             <Text style={styles.buttonText}>Onayla</Text>
