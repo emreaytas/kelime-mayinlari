@@ -43,7 +43,7 @@ export default function GameInterface({ gameId }) {
   const [selectedBoardCells, setSelectedBoardCells] = useState([]);
   const [gameResult, setGameResult] = useState(null);
   const [visibleRack, setVisibleRack] = useState([]);
-
+  const [originalRack, setOriginalRack] = useState([]);
   // Firebase dinleyicisi referansı
   const unsubscribeRef = useRef(null);
 
@@ -72,18 +72,18 @@ export default function GameInterface({ gameId }) {
 
   useEffect(() => {
     if (game) {
-      const userRack = getUserRack();
+      const rack = getUserRack();
+      setOriginalRack(rack);
 
-      // Eğer seçili hücreler varsa, kullanılan harfleri filtrele
-      if (selectedBoardCells.length > 0) {
+      // Görünür rafı güncelle
+      if (selectedBoardCells.length === 0) {
+        setVisibleRack(rack);
+      } else {
         const usedIndices = selectedBoardCells.map((cell) => cell.rackIndex);
-        const updatedRack = userRack.filter(
+        const filteredRack = rack.filter(
           (_, index) => !usedIndices.includes(index)
         );
-        setVisibleRack(updatedRack);
-      } else {
-        // Seçili hücre yoksa, tüm rafı göster
-        setVisibleRack(userRack);
+        setVisibleRack(filteredRack);
       }
     }
   }, [game, selectedBoardCells]);
@@ -335,53 +335,69 @@ export default function GameInterface({ gameId }) {
   };
 
   // Oyun sonucunu göster
+  // showGameResultPopup fonksiyonunu güncelleyelim
   const showGameResultPopup = (gameData) => {
     const isPlayer1 = auth.currentUser?.uid === gameData.player1.id;
-    const player1Won = gameData.player1.score > gameData.player2.score;
-    const player2Won = gameData.player2.score > gameData.player1.score;
-    const isDraw = gameData.player1.score === gameData.player2.score;
 
     let resultMessage = "";
     let resultType = ""; // "win", "loss", "draw"
 
-    // Oyunun bitme nedenine göre mesaj oluştur
-    if (gameData.reason === "timeout") {
-      const timedOutPlayerName =
-        gameData.timedOutPlayer === auth.currentUser?.uid
-          ? "Sizin"
-          : isPlayer1
-          ? gameData.player2.username
-          : gameData.player1.username;
-
-      resultMessage = `${timedOutPlayerName} süreniz doldu!`;
-    } else if (gameData.reason === "surrender") {
-      const surrenderedPlayer =
-        gameData.reason === auth.currentUser?.uid
-          ? "Siz teslim oldunuz"
-          : `${
-              isPlayer1 ? gameData.player2.username : gameData.player1.username
-            } teslim oldu`;
-
-      resultMessage = surrenderedPlayer;
+    // Oyunun bitme nedenine göre mesaj
+    if (gameData.reason === "surrender") {
+      if (gameData.surrenderedBy === auth.currentUser?.uid) {
+        resultMessage = "Teslim oldunuz";
+        resultType = "loss";
+      } else {
+        resultMessage = "Rakibiniz teslim oldu";
+        resultType = "win";
+      }
+    } else if (gameData.reason === "timeout") {
+      if (gameData.timedOutPlayer === auth.currentUser?.uid) {
+        resultMessage = "Süreniz doldu";
+        resultType = "loss";
+      } else {
+        resultMessage = "Rakibinizin süresi doldu";
+        resultType = "win";
+      }
     } else if (gameData.reason === "pass") {
-      resultMessage = "Üst üste pas geçildiği için oyun sona erdi!";
+      resultMessage = "Üst üste pas geçildi";
+      // Normal puan karşılaştırması
+      const myScore = isPlayer1
+        ? gameData.player1.score
+        : gameData.player2.score;
+      const opponentScore = isPlayer1
+        ? gameData.player2.score
+        : gameData.player1.score;
+
+      if (myScore > opponentScore) {
+        resultType = "win";
+      } else if (myScore < opponentScore) {
+        resultType = "loss";
+      } else {
+        resultType = "draw";
+      }
     } else {
-      resultMessage = "Oyun normal şekilde tamamlandı";
+      // Normal oyun sonu
+      resultMessage = "Oyun tamamlandı";
+
+      if (gameData.winner === auth.currentUser?.uid) {
+        resultType = "win";
+      } else if (gameData.isDraw) {
+        resultType = "draw";
+      } else {
+        resultType = "loss";
+      }
     }
 
-    // Kazanan durumu ekle
-    if (isDraw) {
+    // Sonuç mesajını tamamla
+    if (resultType === "win") {
+      resultMessage += " - Tebrikler, kazandınız!";
+    } else if (resultType === "loss") {
+      resultMessage += " - Üzgünüm, kaybettiniz.";
+    } else if (resultType === "draw") {
       resultMessage += " - Oyun berabere bitti!";
-      resultType = "draw";
-    } else if ((isPlayer1 && player1Won) || (!isPlayer1 && player2Won)) {
-      resultMessage += " - Tebrikler, oyunu kazandınız!";
-      resultType = "win";
-    } else {
-      resultMessage += " - Üzgünüm, oyunu kaybettiniz.";
-      resultType = "loss";
     }
 
-    // Bilgileri state'e kaydet
     return {
       resultMessage,
       resultType,
@@ -566,57 +582,44 @@ export default function GameInterface({ gameId }) {
   };
 
   // Raftaki harf seçimi
-  const handleRackTileSelect = (index) => {
+  const handleRackTileSelect = (visibleIndex) => {
     if (!isUserTurn()) {
       showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
     }
 
-    // Gerçek kullanıcı rafını al (visibleRack değil)
-    const fullRack = getUserRack();
+    // Görünür indeksi orijinal indekse çevir
+    const usedIndices = selectedBoardCells
+      .map((cell) => cell.rackIndex)
+      .sort((a, b) => a - b);
+    let originalIndex = visibleIndex;
 
-    // Daha önce yerleştirilmiş harflerin indekslerini al
-    const usedIndices = selectedBoardCells.map((cell) => cell.rackIndex);
-
-    // Görünür raftaki indeksi, gerçek raftaki indekse dönüştür
-    let realIndex = index;
-    for (let i = 0; i <= index; i++) {
-      if (usedIndices.includes(i)) {
-        realIndex++;
+    // Her kullanılan indeks için, görünür indeksi kaydır
+    for (const usedIndex of usedIndices) {
+      if (originalIndex >= usedIndex) {
+        originalIndex++;
       }
     }
 
-    // Gerçek indeksin geçerli olduğunu kontrol et
-    if (realIndex >= fullRack.length) {
+    // Orijinal raftaki harfi kontrol et
+    if (originalIndex >= originalRack.length) {
       showTemporaryMessage("Geçersiz harf seçimi!");
       return;
     }
 
-    // Seçili rafları güncelle
-    const newSelectedIndices = [...selectedRackIndices];
-    const indexPos = newSelectedIndices.indexOf(realIndex);
-
-    if (indexPos !== -1) {
-      // Eğer bu raf zaten seçiliyse, seçimi kaldır
-      newSelectedIndices.splice(indexPos, 1);
-      setSelectedRackIndices(newSelectedIndices);
+    // Zaten seçili mi kontrol et
+    if (selectedRackIndices.includes(originalIndex)) {
+      // Seçimi kaldır
+      setSelectedRackIndices(
+        selectedRackIndices.filter((idx) => idx !== originalIndex)
+      );
       showTemporaryMessage("Harf seçimi kaldırıldı");
     } else {
-      // Yeni bir raf seçimi yap
-      setSelectedRackIndices([realIndex]);
+      // Yeni seçim yap (sadece bir harf seçilebilir)
+      setSelectedRackIndices([originalIndex]);
       showTemporaryMessage("Şimdi tahtada bir hücre seçin");
-
-      // Debug için log
-      if (fullRack && realIndex >= 0 && realIndex < fullRack.length) {
-        const letter = fullRack[realIndex];
-        console.log(
-          `Seçilen harf: ${
-            typeof letter === "object" ? letter.letter : letter
-          }, gerçek indeks: ${realIndex}, görünür indeks: ${index}`
-        );
-      }
     }
-  }; // Hamleyi onayla ve sunucuya gönder
+  };
   // Bu kısmı confirmMove fonksiyonu olarak güncelle
   // src/components/GameInterface.jsx içindeki confirmMove fonksiyonunu güncelleyelim
 
@@ -884,7 +887,6 @@ export default function GameInterface({ gameId }) {
 
     // Seçilen harfi raf seçiminden kaldır
     setSelectedRackIndices([]);
-
     // Yerleştirme yönünü belirle
     if (newSelectedCells.length === 2) {
       determineDirection(newSelectedCells);
@@ -1237,12 +1239,12 @@ export default function GameInterface({ gameId }) {
     setEarnedPoints(0);
     setActiveReward(null);
 
-    // Görünür rafı sıfırla
-    if (game) {
-      setVisibleRack(getUserRack());
+    // Görünür rafı orijinal rafa döndür
+    if (originalRack.length > 0) {
+      setVisibleRack(originalRack);
     }
 
-    console.log("Tüm seçimler ve değişiklikler sıfırlandı.");
+    console.log("Tüm seçimler sıfırlandı");
   };
   // Pas geç
   // Updated handlePass function for GameInterface.jsx
@@ -1585,15 +1587,15 @@ export default function GameInterface({ gameId }) {
       <View style={styles.rackContainer}>
         <LetterRack
           letters={visibleRack}
-          selectedIndices={selectedRackIndices.map((realIndex) => {
-            // Gerçek indeksi görünür indekse dönüştür
-            let visibleIndex = realIndex;
-            const usedIndices = selectedBoardCells.map(
-              (cell) => cell.rackIndex
-            );
+          selectedIndices={selectedRackIndices.map((originalIndex) => {
+            // Orijinal indeksi görünür indekse çevir
+            const usedIndices = selectedBoardCells
+              .map((cell) => cell.rackIndex)
+              .sort((a, b) => a - b);
+            let visibleIndex = originalIndex;
 
-            for (let i = 0; i < realIndex; i++) {
-              if (usedIndices.includes(i)) {
+            for (const usedIndex of usedIndices) {
+              if (usedIndex < originalIndex) {
                 visibleIndex--;
               }
             }

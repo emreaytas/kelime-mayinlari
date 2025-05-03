@@ -806,6 +806,7 @@ export const finishAndStoreGame = async (gameId, gameData) => {
     throw error;
   }
 };
+
 export const endGame = async (gameId, reason) => {
   try {
     const game = await getGameData(gameId);
@@ -818,31 +819,33 @@ export const endGame = async (gameId, reason) => {
     const isPlayer1 = userId === game.player1.id;
 
     // Son puanları hesapla
-    let player1Score = game.player1.score;
-    let player2Score = game.player2.score;
+    let player1Score = game.player1.score || 0;
+    let player2Score = game.player2.score || 0;
+
+    // Kazananı belirle
+    let winnerId = null;
+    let isDraw = false;
 
     // Teslim olma durumu
     if (reason === "surrender") {
-      if (isPlayer1) {
+      if (userId === game.player1.id) {
         // Oyuncu 1 teslim oldu - Oyuncu 2 kazandı
+        winnerId = game.player2.id;
         player2Score += 50; // Bonus puan
-      } else {
+      } else if (userId === game.player2.id) {
         // Oyuncu 2 teslim oldu - Oyuncu 1 kazandı
+        winnerId = game.player1.id;
         player1Score += 50; // Bonus puan
       }
-    }
-
-    // Kazanan belirle
-    const player1Win = player1Score > player2Score;
-    const player2Win = player2Score > player1Score;
-    const isDraw = player1Score === player2Score;
-
-    // Kazanan oyuncuyu belirle
-    let winnerId = null;
-    if (player1Win) {
-      winnerId = game.player1.id;
-    } else if (player2Win) {
-      winnerId = game.player2.id;
+    } else {
+      // Normal oyun sonu veya pas durumu
+      if (player1Score > player2Score) {
+        winnerId = game.player1.id;
+      } else if (player2Score > player1Score) {
+        winnerId = game.player2.id;
+      } else {
+        isDraw = true;
+      }
     }
 
     // Oyunu güncelle
@@ -861,11 +864,8 @@ export const endGame = async (gameId, reason) => {
       },
       winner: winnerId,
       isDraw: isDraw,
-      finishedBy: userId || "system",
+      surrenderedBy: reason === "surrender" ? userId : null,
     };
-
-    // Veri güvenliği için temizleme
-    cleanGameDataForFirebase(updatedGameData);
 
     // Aktif oyunu tamamlandı olarak güncelle
     await update(ref(database, `games/${gameId}`), {
@@ -874,9 +874,10 @@ export const endGame = async (gameId, reason) => {
       reason: updatedGameData.reason,
       winner: updatedGameData.winner,
       isDraw: updatedGameData.isDraw,
+      surrenderedBy: updatedGameData.surrenderedBy,
     });
 
-    // Tamamlanmış oyunu kalıcı depolamaya aktar
+    // Tamamlanmış oyunu kaydet
     await finishAndStoreGame(gameId, updatedGameData);
 
     return {
@@ -884,13 +885,13 @@ export const endGame = async (gameId, reason) => {
       player1Score,
       player2Score,
       winner: winnerId,
+      isDraw: isDraw,
     };
   } catch (error) {
     console.error("End game error:", error);
     throw error;
   }
 };
-
 // Ödül kullan
 export const useReward = async (gameId, rewardType) => {
   try {
