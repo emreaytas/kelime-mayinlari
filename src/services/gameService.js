@@ -394,8 +394,6 @@ export const listenToGameChanges = (gameId, callback) => {
   }
 };
 
-
-
 export const placeWord = async (gameId, placedCells) => {
   try {
     if (!auth.currentUser) {
@@ -416,55 +414,10 @@ export const placeWord = async (gameId, placedCells) => {
     const isPlayer1 = game.player1.id === userId;
     const userRack = isPlayer1 ? game.player1Rack : game.player2Rack;
 
-    // Tahta kopyası oluştur - BURADA NORMALİZASYON YAPALIM
-    let boardCopy = [];
+    // Tahta kopyası oluştur
+    const boardCopy = JSON.parse(JSON.stringify(game.board));
 
-    // Firebase'den gelen tahta formatını normalize et
-    if (Array.isArray(game.board)) {
-      // Eğer tahta zaten dizi formatındaysa
-      boardCopy = JSON.parse(JSON.stringify(game.board));
-    } else {
-      // Firebase nesne formatındaysa normalize et
-      boardCopy = [];
-      for (let i = 0; i < 15; i++) {
-        boardCopy[i] = [];
-        for (let j = 0; j < 15; j++) {
-          if (game.board && game.board[i] && game.board[i][j]) {
-            boardCopy[i][j] = { ...game.board[i][j] };
-          } else {
-            boardCopy[i][j] = {
-              letter: null,
-              type: null,
-              special: null,
-            };
-          }
-        }
-      }
-    }
-
-    // Harfleri yerleştir
-    placedCells.forEach((cell) => {
-      const { row, col, rackIndex } = cell;
-
-      // Güvenlik kontrolü
-      if (!boardCopy[row]) {
-        boardCopy[row] = [];
-      }
-      if (!boardCopy[row][col]) {
-        boardCopy[row][col] = {
-          letter: null,
-          type: null,
-          special: null,
-        };
-      }
-
-      const letterObj = userRack[rackIndex];
-      const letter =
-        typeof letterObj === "object" ? letterObj.letter : letterObj;
-      boardCopy[row][col].letter = letter;
-    });
-
-    // Kelimeyi oluştur (gösterim amaçlı)
+    // Kelimeyi oluştur ve doğrula
     let word = "";
     placedCells.forEach((cell) => {
       const { rackIndex } = cell;
@@ -474,34 +427,49 @@ export const placeWord = async (gameId, placedCells) => {
       word += letter === "JOKER" ? "*" : letter;
     });
 
-    // Kelime kontrolü
+    // Kelime kontrolü - geçerli değilse hata fırlat
     if (!validateWord(word.toLowerCase())) {
       throw new Error("Geçersiz kelime");
     }
 
+    // Kelime onaylandı, şimdi harfleri kalıcı olarak yerleştir
+    placedCells.forEach((cell) => {
+      const { row, col, rackIndex } = cell;
+      const letterObj = userRack[rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+      const points = typeof letterObj === "object" ? letterObj.points : 0;
+
+      // Harfi kalıcı olarak tahtaya yerleştir
+      boardCopy[row][col] = {
+        letter: letter,
+        type: boardCopy[row][col].type || null,
+        special: null, // Özel öğe kullanıldıysa temizle
+        points: points,
+      };
+    });
+
     // Puanları hesapla
     let points = calculateWordPoints(placedCells, boardCopy, userRack);
 
-    // Mayın/ödül kontrolü - burada basit bir kontrol yapıyoruz
+    // Mayın/ödül kontrolü
     const effects = {};
     const rewards = [];
 
     // Her hücre için mayın/ödül kontrolü
     placedCells.forEach((cell) => {
       const { row, col } = cell;
-      const special = boardCopy[row][col].special;
+      const special = game.board[row][col].special;
 
       if (special) {
         // Mayın etkileri
         if (special === "PuanBolunmesi") {
           effects.pointDivision = true;
-          points = Math.round(points * 0.3); // %30'unu al
+          points = Math.round(points * 0.3);
         } else if (special === "PuanTransferi") {
           effects.pointTransfer = true;
           const opponentPoints = points;
-          points = -points; // Oyuncudan puan düş
-
-          // Rakibe puan ekle
+          points = -points;
           if (isPlayer1) {
             game.player2.score = (game.player2.score || 0) + opponentPoints;
           } else {
@@ -509,14 +477,12 @@ export const placeWord = async (gameId, placedCells) => {
           }
         } else if (special === "HarfKaybi") {
           effects.letterLoss = true;
-          // Tüm harfler değiştirilecek
         } else if (special === "EkstraHamleEngeli") {
           effects.moveBlockade = true;
-          // Özel hücre etkilerini iptal et
           points = calculateRawPoints(placedCells, userRack);
         } else if (special === "KelimeIptali") {
           effects.wordCancellation = true;
-          points = 0; // Puan yok
+          points = 0;
         }
 
         // Ödül etkileri
@@ -527,51 +493,34 @@ export const placeWord = async (gameId, placedCells) => {
         ) {
           rewards.push(special);
         }
-
-        // Özel hücreyi kullanıldı olarak işaretle
-        boardCopy[row][col].special = null;
       }
     });
 
-    // ÖNEMLİ: Kullanılan harflerin yerine yeni harf verilmesi
-    // 1. Kullanıcının mevcut rafını kopyala
+    // Kullanılan harflerin yerine yenilerini al
     let userRackCopy = [...userRack];
-
-    // 2. Kullanılan harflerin indekslerini büyükten küçüğe sırala (doğru silme için)
     const usedIndices = placedCells
       .map((cell) => cell.rackIndex)
       .sort((a, b) => b - a);
-
-    // 3. Kullanılan harfleri raftan çıkar
     usedIndices.forEach((index) => {
       userRackCopy.splice(index, 1);
     });
 
-    // Harf Kaybı mayını etkisini uygula
+    // Harf Kaybı mayını
     if (effects.letterLoss) {
-      // Tüm harfleri havuza geri koy
       game.letterPool = [...game.letterPool, ...userRackCopy];
-      // Rafı temizle
       userRackCopy = [];
     }
 
-    // 4. Kaç yeni harf gerektiğini belirle
+    // Yeni harfleri çek
     const neededLetterCount = Math.min(
       7 - userRackCopy.length,
       game.letterPool.length
     );
-
-    // 5. Harf havuzundan yeni harfleri al
     const newLetters = game.letterPool.slice(0, neededLetterCount);
-
-    // 6. Kalan harf havuzunu güncelle
     const updatedLetterPool = game.letterPool.slice(neededLetterCount);
-
-    // 7. Kullanıcının rafına yeni harfleri ekle
     userRackCopy = [...userRackCopy, ...newLetters];
 
-    // Ödülleri Firebase uyumlu bir formatta saklama
-    // ÖNEMLİ: İç içe dizi hatası burada olabilir
+    // Ödülleri güncelle
     let player1Rewards = Array.isArray(game.player1Rewards)
       ? [...game.player1Rewards]
       : [];
@@ -579,18 +528,15 @@ export const placeWord = async (gameId, placedCells) => {
       ? [...game.player2Rewards]
       : [];
 
-    // Firebase'in iç içe dizi sorunu için, ödülleri map olarak saklayalım
     if (rewards.length > 0) {
       if (isPlayer1) {
-        for (const reward of rewards) {
-          player1Rewards.push(reward);
-        }
+        player1Rewards = [...player1Rewards, ...rewards];
       } else {
-        for (const reward of rewards) {
-          player2Rewards.push(reward);
-        }
+        player2Rewards = [...player2Rewards, ...rewards];
       }
     }
+
+    // Tahtayı Firebase formatına dönüştür
     const firebaseBoard = boardToFirebaseFormat(boardCopy);
 
     // Oyun verilerini güncelle
@@ -602,10 +548,10 @@ export const placeWord = async (gameId, placedCells) => {
         game.player1.id === userId ? game.player2.id : game.player1.id,
       firstMove: false,
       centerRequired: false,
-      consecutivePasses: 0, // Pas geçme sayacını sıfırla
+      consecutivePasses: 0,
     };
 
-    // Puanları ve oyuncunun yeni rafını güncelle
+    // Puanları güncelle
     if (isPlayer1) {
       updates.player1 = {
         ...game.player1,
@@ -622,7 +568,7 @@ export const placeWord = async (gameId, placedCells) => {
       updates.player2Rewards = player2Rewards;
     }
 
-    // Puan transferi varsa rakibin puanını güncelle
+    // Puan transferi
     if (effects.pointTransfer) {
       if (isPlayer1) {
         updates.player2 = {
@@ -637,15 +583,12 @@ export const placeWord = async (gameId, placedCells) => {
       }
     }
 
-    // Oyun bitişini kontrol et - Eğer bir oyuncunun rafındaki tüm harfler biterse
+    // Oyun bitişi kontrolü
     if (userRackCopy.length === 0 && updatedLetterPool.length === 0) {
       updates.status = "completed";
       updates.completedAt = Date.now();
       updates.reason = "allLettersUsed";
       updates.winner = userId;
-
-      // Oyun bittiği için kalıcı depolamaya aktar
-      await finishAndStoreGame(gameId, { ...game, ...updates });
     }
 
     // Firebase güncelle
@@ -774,26 +717,31 @@ function cleanGameDataForFirebase(gameData) {
     }
   });
 }
-
 const boardToFirebaseFormat = (board) => {
   const firebaseBoard = [];
 
   for (let i = 0; i < board.length; i++) {
-    const row = {};
+    const rowObject = {};
+
     for (let j = 0; j < board[i].length; j++) {
       const cell = board[i][j];
-      // Sadece dolu hücreleri kaydet
-      if (cell.letter || cell.type || cell.special) {
-        row[j] = cell;
+
+      // Tüm hücre özelliklerini kaydet
+      if (cell && (cell.letter || cell.type || cell.special)) {
+        rowObject[j] = {
+          letter: cell.letter || null,
+          type: cell.type || null,
+          special: cell.special || null,
+          points: cell.points || null,
+        };
       }
     }
-    // Eğer satırda hiç veri yoksa boş object yerine null koy
-    firebaseBoard.push(Object.keys(row).length > 0 ? row : null);
+
+    firebaseBoard.push(rowObject);
   }
 
   return firebaseBoard;
 };
-
 // Oyunu bitir, kalıcı depolamaya aktar
 export const finishAndStoreGame = async (gameId, gameData) => {
   try {

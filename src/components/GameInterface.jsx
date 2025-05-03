@@ -442,50 +442,38 @@ export default function GameInterface({ gameId }) {
       },
     };
   };
-
   const normalizeBoard = (boardData) => {
     if (!boardData) return null;
 
     const normalizedBoard = [];
 
-    // Create a complete 15x15 array
+    // 15x15 tahta oluştur
     for (let i = 0; i < 15; i++) {
       const row = [];
       for (let j = 0; j < 15; j++) {
-        // Default empty cell
+        // Varsayılan boş hücre
         let cell = {
           letter: null,
-          type: null,
+          type: getCellType(i, j),
           special: null,
+          points: null,
         };
 
-        // Check if this position has data in Firebase format
-        if (boardData[i]) {
-          // Firebase might store data as object or array
-          if (Array.isArray(boardData[i])) {
-            if (boardData[i][j]) {
-              cell = { ...cell, ...boardData[i][j] };
-            }
-          } else if (typeof boardData[i] === "object") {
-            // Check if data exists for this column (as string or number key)
-            if (
-              boardData[i][j] ||
-              boardData[i][j.toString()] ||
-              boardData[i][String(j)]
-            ) {
-              const cellData =
-                boardData[i][j] ||
-                boardData[i][j.toString()] ||
-                boardData[i][String(j)];
-              if (cellData) {
-                cell = { ...cell, ...cellData };
-              }
-            }
+        // Firebase'den gelen veriyi kontrol et
+        if (boardData[i] && typeof boardData[i] === "object") {
+          // j indeksini string olarak da kontrol et (Firebase bazen string key kullanır)
+          const cellData = boardData[i][j] || boardData[i][j.toString()];
+
+          if (cellData) {
+            cell = {
+              ...cell,
+              letter: cellData.letter || null,
+              type: cellData.type || cell.type, // Özel hücre tipini koru
+              special: cellData.special || null,
+              points: cellData.points || null,
+            };
           }
         }
-
-        // Special cell types (H2, H3, K2, K3, star)
-        cell.type = getCellType(i, j);
 
         row.push(cell);
       }
