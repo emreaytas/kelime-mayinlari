@@ -12,14 +12,17 @@ export default function GameBoard({
   board,
   selectedCells = [],
   onCellPress,
-  showSpecials = false, // Debug modu için mayın ve ödülleri göster
-  getUserRack, // Harfleri getiren fonksiyon
+  showSpecials = false,
+  getUserRack,
 }) {
-  if (!board || !Array.isArray(board) || board.length === 0) {
+  // Board'un normalize edildiğinden emin ol
+  if (!board || !Array.isArray(board) || board.length !== 15) {
     console.error("Geçersiz tahta verisi:", board);
     return (
       <View style={styles.container}>
-        <View style={styles.board}></View>
+        <View style={styles.board}>
+          <Text>Tahta yükleniyor...</Text>
+        </View>
       </View>
     );
   }
@@ -65,38 +68,46 @@ export default function GameBoard({
   };
 
   // Hücreye tıklama işleyicisi
+
   const handleCellPress = (row, col) => {
     console.log(`GameBoard: Hücre tıklandı (${row}, ${col})`);
+
+    // row ve col'un sayı olduğundan emin ol
+    const rowNum = parseInt(row, 10);
+    const colNum = parseInt(col, 10);
+
+    console.log(`Dönüştürülmüş değerler: row=${rowNum}, col=${colNum}`);
+
+    if (isNaN(rowNum) || isNaN(colNum)) {
+      console.error("Row veya col sayıya dönüştürülemedi!");
+      return;
+    }
+
     if (onCellPress) {
-      onCellPress(row, col);
+      onCellPress(rowNum, colNum);
     }
   };
 
   // Tahta satırları ve hücrelerini oluştur
+  // src/components/GameBoard.jsx içinde
+
   const renderBoard = () => {
     const rows = [];
-
-    // Tahta verisi kontrolü
-    if (!board || !Array.isArray(board) || board.length === 0) {
-      console.error("Geçersiz tahta verisi:", board);
-      return [];
-    }
 
     for (let i = 0; i < 15; i++) {
       const cells = [];
 
       for (let j = 0; j < 15; j++) {
-        // Buradaki hata koruması çok önemli
-        // Hücrelere güvenli erişim sağlayın
+        // Güvenli erişim
         const cellData =
-          board[i] && board[i][j] ? board[i][j] : { letter: null, type: null };
+          board[i] && board[i][j]
+            ? board[i][j]
+            : { letter: null, type: null, special: null };
         const isSelected = isCellSelected(i, j);
 
-        // Varsayılan olarak hücredeki kalıcı harfi göster
         let displayLetter = cellData.letter || null;
         let isTemporary = false;
 
-        // Eğer bu hücre şu anda seçili ise, geçici harfi göster
         if (isSelected) {
           const selectedLetter = getSelectedCellLetter(i, j);
           if (selectedLetter) {

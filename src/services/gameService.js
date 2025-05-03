@@ -420,12 +420,9 @@ export const placeWord = async (gameId, placedCells) => {
     // Harfleri yerleştir
     placedCells.forEach((cell) => {
       const { row, col, rackIndex } = cell;
-      // Harfi kullanıcının rafından al
       const letterObj = userRack[rackIndex];
       const letter =
         typeof letterObj === "object" ? letterObj.letter : letterObj;
-
-      // Tahtaya harfi yerleştir
       boardCopy[row][col].letter = letter;
     });
 
@@ -556,10 +553,11 @@ export const placeWord = async (gameId, placedCells) => {
         }
       }
     }
+    const firebaseBoard = boardToFirebaseFormat(boardCopy);
 
     // Oyun verilerini güncelle
     const updates = {
-      board: boardCopy,
+      board: firebaseBoard,
       letterPool: updatedLetterPool,
       lastMoveTime: Date.now(),
       turnPlayer:
@@ -738,6 +736,25 @@ function cleanGameDataForFirebase(gameData) {
     }
   });
 }
+
+const boardToFirebaseFormat = (board) => {
+  const firebaseBoard = [];
+
+  for (let i = 0; i < board.length; i++) {
+    const row = {};
+    for (let j = 0; j < board[i].length; j++) {
+      const cell = board[i][j];
+      // Sadece dolu hücreleri kaydet
+      if (cell.letter || cell.type || cell.special) {
+        row[j] = cell;
+      }
+    }
+    // Eğer satırda hiç veri yoksa boş object yerine null koy
+    firebaseBoard.push(Object.keys(row).length > 0 ? row : null);
+  }
+
+  return firebaseBoard;
+};
 
 // Oyunu bitir, kalıcı depolamaya aktar
 export const finishAndStoreGame = async (gameId, gameData) => {

@@ -264,6 +264,7 @@ export default function GameInterface({ gameId }) {
   }, [game, isUserTurn]);
 
   // Oyun değişikliklerini dinleme
+  // setupGameListener fonksiyonunu güncelleyelim
   const setupGameListener = () => {
     unsubscribeRef.current = listenToGameChanges(gameId, (gameData, error) => {
       setLoading(false);
@@ -278,6 +279,13 @@ export default function GameInterface({ gameId }) {
           { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
         ]);
         return;
+      }
+
+      // Board'u normalize et
+      if (gameData.board) {
+        gameData.board = normalizeBoard(gameData.board);
+        console.log("Board normalize edildi");
+        console.log("Yeni board[7][6]:", gameData.board[7][6]);
       }
 
       // Oyun verilerini güncelle
@@ -364,6 +372,47 @@ export default function GameInterface({ gameId }) {
     };
   };
 
+  const normalizeBoard = (boardData) => {
+    if (!boardData) return null;
+
+    // Eğer zaten tam bir 15x15 array ise direkt döndür
+    if (
+      Array.isArray(boardData) &&
+      boardData.length === 15 &&
+      Array.isArray(boardData[0])
+    ) {
+      return boardData;
+    }
+
+    // Firebase'den gelen sparse board'u tam 15x15 array'e çevir
+    const normalizedBoard = [];
+
+    for (let i = 0; i < 15; i++) {
+      const row = [];
+      for (let j = 0; j < 15; j++) {
+        // Varsayılan boş hücre
+        let cell = {
+          letter: null,
+          type: null,
+          special: null,
+        };
+
+        // Eğer Firebase'de bu hücre için veri varsa kullan
+        if (boardData[i] && boardData[i][j]) {
+          cell = { ...cell, ...boardData[i][j] };
+        }
+        // Eğer satır bir object ise ve j indeksi string olarak varsa
+        else if (boardData[i] && boardData[i][j.toString()]) {
+          cell = { ...cell, ...boardData[i][j.toString()] };
+        }
+
+        row.push(cell);
+      }
+      normalizedBoard.push(row);
+    }
+
+    return normalizedBoard;
+  };
   // Kullanıcının harflerini al
   const getUserRack = () => {
     if (!game || !auth.currentUser) return [];
@@ -617,16 +666,32 @@ export default function GameInterface({ gameId }) {
     return "Özel bir etki tetiklendi!";
   };
   // Hücre seçimi
-  // src/components/GameInterface.jsx içindeki handleCellPress fonksiyonunu güncelleyelim
-
   const handleCellPress = (row, col) => {
     console.log(`handleCellPress çağrıldı - Satır: ${row}, Sütun: ${col}`);
 
     // Oyun kontrolü
-    if (!game || !game.board) {
-      console.error("Oyun veya tahta tanımlı değil!");
+    if (!game) {
+      console.error("Oyun tanımlı değil!");
       return;
     }
+
+    if (!game.board) {
+      console.error("Oyun tahtası tanımlı değil!");
+      return;
+    }
+
+    // Artık normalize edilmiş board'u kullanabiliriz
+    if (!game.board[row]) {
+      console.error(`game.board[${row}] tanımlı değil!`);
+      return;
+    }
+
+    if (!game.board[row][col]) {
+      console.error(`game.board[${row}][${col}] tanımlı değil!`);
+      return;
+    }
+
+    console.log(`Hücre (${row},${col}) geçerli:`, game.board[row][col]);
 
     // Kullanıcının sırası değilse işlem yapma
     if (!isUserTurn()) {
@@ -642,12 +707,6 @@ export default function GameInterface({ gameId }) {
 
     // Seçilen raf indeksini al
     const rackIndex = selectedRackIndices[0];
-
-    // Hücre var mı kontrol et
-    if (!game.board[row] || !game.board[row][col]) {
-      console.error(`Geçersiz hücre koordinatları: (${row}, ${col})`);
-      return;
-    }
 
     // Hücre dolu mu kontrol et (sadece kalıcı harfler için)
     if (game.board[row][col].letter) {
@@ -696,7 +755,6 @@ export default function GameInterface({ gameId }) {
 
     console.log("Harf yerleştirildi:", { row, col, rackIndex });
   };
-
   // checkValidPlacement fonksiyonunu da güncelleyelim
 
   const checkValidPlacement = (row, col) => {

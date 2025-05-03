@@ -75,8 +75,12 @@ export default function BoardCell({
       isSelected,
       isTemporary,
     });
+
     if (onPress) {
+      console.log("onPress fonksiyonu çağrılıyor");
       onPress(); // Üst bileşenden gelen tıklama işleyiciyi çağır
+    } else {
+      console.warn("onPress fonksiyonu tanımlı değil!");
     }
   };
 
