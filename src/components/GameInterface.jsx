@@ -89,6 +89,26 @@ export default function GameInterface({ gameId }) {
   }, [game, selectedBoardCells]);
 
   useEffect(() => {
+    // Oyun ID'si var mı kontrol et
+    if (!gameId) {
+      Alert.alert("Hata", "Oyun ID'si bulunamadı", [
+        { text: "Ana Sayfaya Dön", onPress: () => router.replace("/home") },
+      ]);
+      return;
+    }
+
+    // Oyun verilerini dinle
+    setupGameListener();
+
+    // Cleanup
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, [gameId]);
+
+  useEffect(() => {
     if (!game || !isUserTurn() || !gameId) return;
 
     // Check time remaining every second
@@ -258,9 +278,96 @@ export default function GameInterface({ gameId }) {
     };
   }, [game, isUserTurn]);
 
-  // Oyun değişikliklerini dinleme
-  // setupGameListener fonksiyonunu güncelleyelim
+  const showBoardSpecialsOnly = (gameData) => {
+    console.log("\n=== OYUN TAHTASI - MAYINLAR VE ÖDÜLLER ===");
+
+    // Tahta matrisi oluştur
+    let matrixString = "    ";
+    for (let i = 0; i < 15; i++) {
+      matrixString += String(i).padStart(3, " ");
+    }
+    matrixString += "\n";
+    matrixString += "   +" + "-".repeat(45) + "+\n";
+
+    for (let row = 0; row < 15; row++) {
+      matrixString += String(row).padStart(2, " ") + " |";
+
+      for (let col = 0; col < 15; col++) {
+        const cell = gameData.board[row][col];
+        let symbol = "   "; // Boş hücre
+
+        if (cell.special) {
+          // Sadece mayın veya ödül göster
+          switch (cell.special) {
+            // Mayınlar
+            case "PuanBolunmesi":
+              symbol = " %÷";
+              break;
+            case "PuanTransferi":
+              symbol = " $→";
+              break;
+            case "HarfKaybi":
+              symbol = " H-";
+              break;
+            case "EkstraHamleEngeli":
+              symbol = " X!";
+              break;
+            case "KelimeIptali":
+              symbol = " K×";
+              break;
+            // Ödüller
+            case "BolgeYasagi":
+              symbol = " B+";
+              break;
+            case "HarfYasagi":
+              symbol = " H+";
+              break;
+            case "EkstraHamleJokeri":
+              symbol = " E+";
+              break;
+          }
+        }
+
+        matrixString += symbol;
+      }
+      matrixString += "|\n";
+    }
+    matrixString += "   +" + "-".repeat(45) + "+\n";
+
+    console.log(matrixString);
+
+    // Mayın ve ödül bilgileri
+    console.log("\nMAYINLAR VE ÖDÜLLER:");
+    console.log("------------------------");
+    console.log("Öğe Türü                | Adet");
+    console.log("------------------------");
+    console.log("Puan Bölünmesi         |   5");
+    console.log("Puan Transferi         |   4");
+    console.log("Harf Kaybı             |   3");
+    console.log("Ekstra Hamle Engeli    |   2");
+    console.log("Kelime İptali          |   2");
+    console.log("Bölge Yasağı           |   2");
+    console.log("Harf Yasağı            |   3");
+    console.log("Ekstra Hamle Jokeri    |   2");
+    console.log("------------------------");
+
+    console.log("\nLEJANT:");
+    console.log("Mayınlar:");
+    console.log("  %÷ = Puan Bölünmesi");
+    console.log("  $→ = Puan Transferi");
+    console.log("  H- = Harf Kaybı");
+    console.log("  X! = Ekstra Hamle Engeli");
+    console.log("  K× = Kelime İptali");
+    console.log("\nÖdüller:");
+    console.log("  B+ = Bölge Yasağı");
+    console.log("  H+ = Harf Yasağı");
+    console.log("  E+ = Ekstra Hamle Jokeri");
+    console.log("\n=========================================\n");
+  };
+
   const setupGameListener = () => {
+    let isFirstLoad = true; // İlk yükleme kontrolü için
+
     unsubscribeRef.current = listenToGameChanges(gameId, (gameData, error) => {
       setLoading(false);
 
@@ -289,7 +396,13 @@ export default function GameInterface({ gameId }) {
 
       // Update game state
       setGame(gameData);
-      console.log("Game data updated with normalized board");
+
+      // Sadece ilk yüklemede mayın ve ödülleri göster
+      if (isFirstLoad) {
+        showBoardSpecialsOnly(gameData);
+        isFirstLoad = false;
+      }
+
       // Seçimleri temizle - bu özellikle diğer kullanıcının hamlelerinden sonra önemli
       if (
         gameData.turnPlayer === auth.currentUser?.uid &&
