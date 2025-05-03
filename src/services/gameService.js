@@ -929,14 +929,18 @@ export const endGame = async (gameId, reason) => {
     // Teslim olma durumu
     if (reason === "surrender") {
       if (userId === game.player1.id) {
-        // Oyuncu 1 teslim oldu - Oyuncu 2 kazandı
-        winnerId = game.player2.id;
-        player2Score += 50; // Bonus puan
+        // Oyuncu 1 teslim oldu
+        player1Score = 0; // Teslim olanın puanı sıfırlanır
+        player2Score += 50; // Rakibine bonus puan
+        winnerId = game.player2.id; // Oyuncu 2 kazandı
       } else if (userId === game.player2.id) {
-        // Oyuncu 2 teslim oldu - Oyuncu 1 kazandı
-        winnerId = game.player1.id;
-        player1Score += 50; // Bonus puan
+        // Oyuncu 2 teslim oldu
+        player2Score = 0; // Teslim olanın puanı sıfırlanır
+        player1Score += 50; // Rakibine bonus puan
+        winnerId = game.player1.id; // Oyuncu 1 kazandı
       }
+      // Teslim olma durumunda beraberlik olamaz
+      isDraw = false;
     } else {
       // Normal oyun sonu veya pas durumu
       if (player1Score > player2Score) {
@@ -975,6 +979,8 @@ export const endGame = async (gameId, reason) => {
       winner: updatedGameData.winner,
       isDraw: updatedGameData.isDraw,
       surrenderedBy: updatedGameData.surrenderedBy,
+      player1: updatedGameData.player1,
+      player2: updatedGameData.player2,
     });
 
     // Tamamlanmış oyunu kaydet

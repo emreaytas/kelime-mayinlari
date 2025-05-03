@@ -536,7 +536,8 @@ export default function GameInterface({ gameId }) {
       }
     } else if (gameData.reason === "pass") {
       resultMessage = "Üst üste pas geçildi";
-      // Normal puan karşılaştırması
+
+      // Puan durumuna göre sonucu belirle
       const myScore = isPlayer1
         ? gameData.player1.score
         : gameData.player2.score;
@@ -573,6 +574,14 @@ export default function GameInterface({ gameId }) {
       resultMessage += " - Oyun berabere bitti!";
     }
 
+    // Özel mesajlar
+    if (
+      gameData.reason === "surrender" &&
+      gameData.surrenderedBy !== auth.currentUser?.uid
+    ) {
+      resultMessage += " (50 bonus puan kazandınız)";
+    }
+
     return {
       resultMessage,
       resultType,
@@ -586,6 +595,7 @@ export default function GameInterface({ gameId }) {
       },
     };
   };
+
   const normalizeBoard = (boardData) => {
     if (!boardData) return null;
 
@@ -2186,9 +2196,9 @@ export default function GameInterface({ gameId }) {
 
   // Oyun tamamlanmışsa
   if (game.status === "completed") {
-    const player1Won = (game.player1?.score || 0) > (game.player2?.score || 0);
-    const player2Won = (game.player2?.score || 0) > (game.player1?.score || 0);
-    const isDraw = (game.player1?.score || 0) === (game.player2?.score || 0);
+    const player1Won = game.winner === game.player1?.id;
+    const player2Won = game.winner === game.player2?.id;
+    const isDraw = game.isDraw === true;
 
     // Kullanıcının oyuncu 1 mi yoksa 2 mi olduğunu belirle
     const isPlayer1 = auth.currentUser?.uid === game.player1?.id;
@@ -2196,22 +2206,17 @@ export default function GameInterface({ gameId }) {
     // Oyunun bitme sebebini açıklayan mesajı belirle
     let reasonMessage = "";
     if (game.reason === "timeout") {
-      // Süre aşımı durumunda, kimin süresinin dolduğunu göster
       const timedOutPlayerName =
         game.timedOutPlayer === game.player1?.id
           ? game.player1?.username
           : game.player2?.username;
       reasonMessage = `Süre aşımı: ${timedOutPlayerName} süresi doldu`;
     } else if (game.reason === "surrender") {
-      // Teslim olma durumunda, kimin teslim olduğunu göster
-      const surrenderedPlayer = isPlayer1
-        ? player1Won
-          ? game.player2?.username
-          : game.player1?.username
-        : player2Won
-        ? game.player1?.username
-        : game.player2?.username;
-      reasonMessage = `${surrenderedPlayer} teslim oldu`;
+      const surrenderedPlayerName =
+        game.surrenderedBy === game.player1?.id
+          ? game.player1?.username
+          : game.player2?.username;
+      reasonMessage = `${surrenderedPlayerName} teslim oldu`;
     } else if (game.reason === "pass") {
       reasonMessage = "Üst üste pas geçildi";
     } else {
@@ -2262,6 +2267,15 @@ export default function GameInterface({ gameId }) {
                 ? "12 Saat"
                 : "24 Saat"}
             </Text>
+            {game.reason === "surrender" && (
+              <Text style={styles.statsText}>
+                Teslim olma nedeniyle{" "}
+                {game.surrenderedBy === game.player1?.id
+                  ? game.player2?.username
+                  : game.player1?.username}{" "}
+                +50 bonus puan kazandı
+              </Text>
+            )}
           </View>
 
           <TouchableOpacity
@@ -2274,7 +2288,6 @@ export default function GameInterface({ gameId }) {
       </SafeAreaView>
     );
   }
-
   // Oyuncuları belirle
   const isPlayer1 = auth.currentUser?.uid === game.player1?.id;
   const currentPlayer = isPlayer1 ? game.player1 : game.player2;
