@@ -281,31 +281,27 @@ export default function GameInterface({ gameId }) {
         return;
       }
 
-      // Board'u normalize et
+      // Ensure board is properly normalized
       if (gameData.board) {
         const normalizedBoard = normalizeBoard(gameData.board);
         if (normalizedBoard) {
           gameData.board = normalizedBoard;
-          console.log("Board normalize edildi");
-          console.log(
-            "Board boyutu:",
-            normalizedBoard.length,
-            "x",
-            normalizedBoard[0].length
-          );
 
-          // Test: belirli bir hücreyi kontrol et
-          if (normalizedBoard[7] && normalizedBoard[7][8]) {
-            console.log("board[7][8] değeri:", normalizedBoard[7][8]);
-          } else {
-            console.error("board[7][8] hala tanımlı değil!");
+          // Verify the specific cell that was causing issues
+          if (normalizedBoard[8] && normalizedBoard[8][7]) {
+            console.log("board[8][7] is now defined:", normalizedBoard[8][7]);
           }
         } else {
-          console.error("Board normalize edilemedi!");
+          console.error("Failed to normalize board!");
+          // Create an empty board as fallback
+          gameData.board = createEmptyBoard();
         }
+      } else {
+        // If no board exists, create an empty one
+        gameData.board = createEmptyBoard();
       }
 
-      // Oyun verilerini güncelle
+      // Update game state
       setGame(gameData);
       console.log("Oyun verileri güncellendi:", gameData);
 
@@ -325,6 +321,22 @@ export default function GameInterface({ gameId }) {
         gameCompletedShown.current = true;
       }
     });
+  };
+
+  const createEmptyBoard = () => {
+    const board = [];
+    for (let i = 0; i < 15; i++) {
+      const row = [];
+      for (let j = 0; j < 15; j++) {
+        row.push({
+          letter: null,
+          type: getCellType(i, j),
+          special: null,
+        });
+      }
+      board.push(row);
+    }
+    return board;
   };
 
   // Oyun sonucunu göster
@@ -392,36 +404,46 @@ export default function GameInterface({ gameId }) {
   const normalizeBoard = (boardData) => {
     if (!boardData) return null;
 
-    // Eğer zaten tam bir 15x15 array ise direkt döndür
-    if (
-      Array.isArray(boardData) &&
-      boardData.length === 15 &&
-      Array.isArray(boardData[0])
-    ) {
-      return boardData;
-    }
-
-    // Firebase'den gelen sparse board'u tam 15x15 array'e çevir
     const normalizedBoard = [];
 
+    // Create a complete 15x15 array
     for (let i = 0; i < 15; i++) {
       const row = [];
       for (let j = 0; j < 15; j++) {
-        // Varsayılan boş hücre
+        // Default empty cell
         let cell = {
           letter: null,
           type: null,
           special: null,
         };
 
-        // Eğer Firebase'de bu hücre için veri varsa kullan
-        if (boardData[i] && boardData[i][j]) {
-          cell = { ...cell, ...boardData[i][j] };
+        // Check if this position has data in Firebase format
+        if (boardData[i]) {
+          // Firebase might store data as object or array
+          if (Array.isArray(boardData[i])) {
+            if (boardData[i][j]) {
+              cell = { ...cell, ...boardData[i][j] };
+            }
+          } else if (typeof boardData[i] === "object") {
+            // Check if data exists for this column (as string or number key)
+            if (
+              boardData[i][j] ||
+              boardData[i][j.toString()] ||
+              boardData[i][String(j)]
+            ) {
+              const cellData =
+                boardData[i][j] ||
+                boardData[i][j.toString()] ||
+                boardData[i][String(j)];
+              if (cellData) {
+                cell = { ...cell, ...cellData };
+              }
+            }
+          }
         }
-        // Eğer satır bir object ise ve j indeksi string olarak varsa
-        else if (boardData[i] && boardData[i][j.toString()]) {
-          cell = { ...cell, ...boardData[i][j.toString()] };
-        }
+
+        // Special cell types (H2, H3, K2, K3, star)
+        cell.type = getCellType(i, j);
 
         row.push(cell);
       }
@@ -431,6 +453,96 @@ export default function GameInterface({ gameId }) {
     return normalizedBoard;
   };
 
+  // Helper function to determine cell type
+  const getCellType = (row, col) => {
+    // H2 cells (letter score x2)
+    const h2Cells = [
+      [0, 5],
+      [0, 9],
+      [1, 6],
+      [1, 8],
+      [5, 0],
+      [5, 5],
+      [5, 9],
+      [5, 14],
+      [6, 1],
+      [6, 6],
+      [6, 8],
+      [6, 13],
+      [8, 1],
+      [8, 6],
+      [8, 8],
+      [8, 13],
+      [9, 0],
+      [9, 5],
+      [9, 9],
+      [9, 14],
+      [13, 6],
+      [13, 8],
+      [14, 5],
+      [14, 9],
+    ];
+
+    // H3 cells (letter score x3)
+    const h3Cells = [
+      [1, 1],
+      [1, 13],
+      [4, 4],
+      [4, 10],
+      [10, 4],
+      [10, 10],
+      [13, 1],
+      [13, 13],
+    ];
+
+    // K2 cells (word score x2)
+    const k2Cells = [
+      [2, 7],
+      [3, 3],
+      [3, 11],
+      [7, 2],
+      [7, 12],
+      [11, 3],
+      [11, 11],
+      [12, 7],
+    ];
+
+    // K3 cells (word score x3)
+    const k3Cells = [
+      [0, 2],
+      [0, 12],
+      [2, 0],
+      [2, 14],
+      [12, 0],
+      [12, 14],
+      [14, 2],
+      [14, 12],
+    ];
+
+    // Center star (starting point)
+    if (row === 7 && col === 7) {
+      return "star";
+    }
+
+    // Check special cell types
+    for (const [r, c] of h2Cells) {
+      if (r === row && c === col) return "H2";
+    }
+
+    for (const [r, c] of h3Cells) {
+      if (r === row && c === col) return "H3";
+    }
+
+    for (const [r, c] of k2Cells) {
+      if (r === row && c === col) return "K2";
+    }
+
+    for (const [r, c] of k3Cells) {
+      if (r === row && c === col) return "K3";
+    }
+
+    return null; // Regular cell
+  };
   // Kullanıcının harflerini al
   const getUserRack = () => {
     if (!game || !auth.currentUser) return [];
