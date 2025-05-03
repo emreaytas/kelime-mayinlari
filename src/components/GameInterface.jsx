@@ -277,15 +277,19 @@ export default function GameInterface({ gameId }) {
       }
 
       // Tahtayı kesinlikle normalize et
+      let normalizedBoard;
       if (gameData.board) {
-        gameData.board = normalizeCompleteBoard(gameData.board);
+        normalizedBoard = normalizeCompleteBoard(gameData.board);
       } else {
-        gameData.board = createEmptyBoard();
+        normalizedBoard = createEmptyBoard();
       }
+
+      // Normalize edilmiş tahtayı kullan
+      gameData.board = normalizedBoard;
 
       // Update game state
       setGame(gameData);
-      console.log("Oyun verileri güncellendi:", gameData);
+      console.log("Game data updated with normalized board");
       // Seçimleri temizle - bu özellikle diğer kullanıcının hamlelerinden sonra önemli
       if (
         gameData.turnPlayer === auth.currentUser?.uid &&
@@ -307,15 +311,15 @@ export default function GameInterface({ gameId }) {
   const createEmptyBoard = () => {
     const board = [];
     for (let i = 0; i < 15; i++) {
-      const row = [];
+      board[i] = [];
       for (let j = 0; j < 15; j++) {
-        row.push({
+        board[i][j] = {
           letter: null,
           type: getCellType(i, j),
           special: null,
-        });
+          points: null,
+        };
       }
-      board.push(row);
     }
     return board;
   };
@@ -323,42 +327,69 @@ export default function GameInterface({ gameId }) {
   const normalizeCompleteBoard = (boardData) => {
     const normalizedBoard = [];
 
+    // 15x15 boş tahta oluştur
     for (let i = 0; i < 15; i++) {
       normalizedBoard[i] = [];
       for (let j = 0; j < 15; j++) {
         // Varsayılan boş hücre
-        let cell = {
+        normalizedBoard[i][j] = {
           letter: null,
           type: getCellType(i, j),
           special: null,
+          points: null,
         };
+      }
+    }
 
-        // Firebase verisini kontrol et
-        if (boardData) {
-          if (Array.isArray(boardData)) {
-            // Dizi formatı
-            if (boardData[i] && boardData[i][j]) {
-              cell = { ...cell, ...boardData[i][j] };
-            }
-          } else if (typeof boardData === "object") {
-            // Nesne formatı
-            if (boardData[i]) {
-              if (Array.isArray(boardData[i])) {
-                if (boardData[i][j]) {
-                  cell = { ...cell, ...boardData[i][j] };
+    // Eğer boardData varsa, üzerine yazalım
+    if (boardData) {
+      // Firebase'den gelen veri formatını kontrol et
+      if (Array.isArray(boardData)) {
+        // Dizi formatı
+        boardData.forEach((row, rowIndex) => {
+          if (row && rowIndex < 15) {
+            if (Array.isArray(row)) {
+              row.forEach((cell, colIndex) => {
+                if (cell && colIndex < 15) {
+                  normalizedBoard[rowIndex][colIndex] = {
+                    ...normalizedBoard[rowIndex][colIndex],
+                    ...cell,
+                  };
                 }
-              } else if (typeof boardData[i] === "object") {
-                if (boardData[i][j] || boardData[i][j.toString()]) {
-                  const cellData =
-                    boardData[i][j] || boardData[i][j.toString()];
-                  cell = { ...cell, ...cellData };
+              });
+            } else if (typeof row === "object") {
+              // Firebase nesne formatı
+              Object.keys(row).forEach((colKey) => {
+                const colIndex = parseInt(colKey);
+                if (!isNaN(colIndex) && colIndex < 15) {
+                  normalizedBoard[rowIndex][colIndex] = {
+                    ...normalizedBoard[rowIndex][colIndex],
+                    ...row[colKey],
+                  };
                 }
-              }
+              });
             }
           }
-        }
-
-        normalizedBoard[i][j] = cell;
+        });
+      } else if (typeof boardData === "object") {
+        // Nesne formatı
+        Object.keys(boardData).forEach((rowKey) => {
+          const rowIndex = parseInt(rowKey);
+          if (!isNaN(rowIndex) && rowIndex < 15) {
+            const row = boardData[rowKey];
+            if (row && typeof row === "object") {
+              Object.keys(row).forEach((colKey) => {
+                const colIndex = parseInt(colKey);
+                if (!isNaN(colIndex) && colIndex < 15) {
+                  normalizedBoard[rowIndex][colIndex] = {
+                    ...normalizedBoard[rowIndex][colIndex],
+                    ...row[colKey],
+                  };
+                }
+              });
+            }
+          }
+        });
       }
     }
 
@@ -641,14 +672,22 @@ export default function GameInterface({ gameId }) {
   };
   // Bu kısmı confirmMove fonksiyonu olarak güncelle
   // src/components/GameInterface.jsx içindeki confirmMove fonksiyonunu güncelleyelim
+
   const confirmMove = async () => {
-    console.log("confirmMove çağrıldı");
-    console.log("isUserTurn():", isUserTurn());
-    console.log("wordValid:", wordValid);
-    console.log("currentWord:", currentWord);
-    console.log("selectedBoardCells:", selectedBoardCells);
+    console.log("=== confirmMove Debug ===");
+
+    console.log("Selected cells:", selectedBoardCells);
+    console.log("Game board:", game?.board);
+    console.log("User rack:", getUserRack());
+
     if (!isUserTurn()) {
       showTemporaryMessage("Şu anda sıra sizde değil!");
+      return;
+    }
+
+    if (!game || !game.board) {
+      console.error("Game or game board not available");
+      showTemporaryMessage("Oyun verisi yüklenemedi!");
       return;
     }
 
@@ -658,8 +697,17 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // İlk hamle kontrolü - KALDIRILDI
-    // Oyunda başlangıç kelimesi otomatik olarak yerleştirildiği için bu kontrolü kaldırıyoruz
+    selectedBoardCells.forEach((cell, index) => {
+      console.log(`Cell ${index}:`, cell);
+      if (game && game.board && game.board[cell.row]) {
+        console.log(
+          `Board cell at [${cell.row}][${cell.col}]:`,
+          game.board[cell.row][cell.col]
+        );
+      } else {
+        console.error(`Invalid board cell at [${cell.row}][${cell.col}]`);
+      }
+    });
 
     // Kelimeyi sıralı hücrelerden oluştur
     const sortedCells = [...selectedBoardCells].sort((a, b) => {
@@ -721,7 +769,6 @@ export default function GameInterface({ gameId }) {
 
         // Mayın etkileri varsa göster
         if (result.effects && Object.keys(result.effects).length > 0) {
-          // Mayın etkilerini setTimeout ile göster (toast'tan sonra)
           setTimeout(() => {
             setSpecialPopup({
               title: "Mayına Bastınız!",
@@ -742,22 +789,7 @@ export default function GameInterface({ gameId }) {
               });
             },
             result.effects ? 2000 : 1000
-          ); // Mayın varsa daha sonra göster
-        }
-
-        // Sıra devredildi bilgisi
-        if (result.nextPlayer) {
-          console.log(
-            `Sıra ${
-              result.nextPlayer === auth.currentUser.uid ? "sizde" : "rakipte"
-            }`
           );
-        }
-
-        // Oyun bitti mi kontrolü
-        if (result.gameEnded) {
-          // Oyun bitişi otomatik olarak GameInterface tarafından handle edilecek
-          console.log("Oyun sona erdi!");
         }
       }
     } catch (error) {
@@ -765,6 +797,11 @@ export default function GameInterface({ gameId }) {
     } finally {
       setConfirmingAction(false);
     }
+  };
+
+  const cancelMove = () => {
+    resetSelections();
+    showTemporaryMessage("Hamle iptal edildi");
   };
 
   const getMineEffectMessage = (effects) => {
@@ -1063,14 +1100,13 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Hücreleri sırala (yön belirlendiyse ona göre)
+    // Hücreleri sırala
     const sortedCells = [...cells].sort((a, b) => {
       if (placementDirection === "horizontal") {
         return a.col - b.col;
       } else if (placementDirection === "vertical") {
         return a.row - b.row;
       }
-      // Varsayılan sıralama (yön belirlenemediyse)
       return 0;
     });
 
@@ -1090,23 +1126,19 @@ export default function GameInterface({ gameId }) {
 
     // Kelime en az 2 harf ise geçerliliğini kontrol et
     if (word.length >= 2) {
-      // Debug için kelimeyi logla
-      console.log("Oluşturulan kelime:", word);
-
-      // Joker (*) karakterlerini kontrol için geçici olarak A harfine çevir
       const wordToValidate = word.replace(/\*/g, "A").toLowerCase();
-      console.log("Doğrulanacak kelime:", wordToValidate);
-
       const isValid = validateWord(wordToValidate);
-      console.log("Kelime geçerli mi?", isValid);
-
       setWordValid(isValid);
 
       if (isValid) {
-        // Puan hesapla
-        const points = calculateWordPoints(sortedCells, game.board, rack);
-        setEarnedPoints(points);
-        console.log("Hesaplanan puan:", points);
+        // Tahta verisi kontrolü
+        if (game && game.board) {
+          const points = calculateWordPoints(sortedCells, game.board, rack);
+          setEarnedPoints(points);
+        } else {
+          console.error("Game board not available for point calculation");
+          setEarnedPoints(0);
+        }
       } else {
         setEarnedPoints(0);
       }
@@ -1236,15 +1268,19 @@ export default function GameInterface({ gameId }) {
     placedCells.forEach((cell) => {
       const { row, col, rackIndex } = cell;
 
+      // Board kontrolü ekleyelim
+      if (!board || !board[row] || !board[row][col]) {
+        console.error(`Invalid board cell at [${row}][${col}]`);
+        return;
+      }
+
       // Harfi oyuncunun rafından al
       const letterObj = rack[rackIndex];
       const letter =
         typeof letterObj === "object" ? letterObj.letter : letterObj;
 
-      // Harfin puan değerini al - projedeki harflerin puan değerleri
-      let letterPoint = 0;
-
       // JOKER kullanıldıysa puanı 0
+      let letterPoint = 0;
       if (letter === "JOKER" || letter === "*") {
         letterPoint = 0;
       } else {
@@ -1280,22 +1316,21 @@ export default function GameInterface({ gameId }) {
           Y: 3,
           Z: 4,
         };
-
         letterPoint = letterValues[letter] || 0;
       }
 
-      // Hücre tipini kontrol et (çarpanlar)
-      const cellType = board[row][col]?.type;
+      // Hücre tipini kontrol et (çarpanlar) - güvenli erişim
+      const cellData = board[row][col];
+      const cellType = cellData ? cellData.type : null;
 
-      // Harf çarpanları
       if (cellType === "H2") {
-        letterPoint *= 2; // Harf puanı 2 katı
+        letterPoint *= 2;
       } else if (cellType === "H3") {
-        letterPoint *= 3; // Harf puanı 3 katı
+        letterPoint *= 3;
       } else if (cellType === "K2") {
-        wordMultiplier *= 2; // Kelime puanı 2 katı
+        wordMultiplier *= 2;
       } else if (cellType === "K3") {
-        wordMultiplier *= 3; // Kelime puanı 3 katı
+        wordMultiplier *= 3;
       }
 
       totalPoints += letterPoint;
@@ -1305,11 +1340,6 @@ export default function GameInterface({ gameId }) {
     totalPoints *= wordMultiplier;
 
     return totalPoints;
-  };
-
-  // Hamleyi iptal et
-  const cancelMove = () => {
-    resetSelections();
   };
 
   const getSelectedCellLetter = (row, col) => {

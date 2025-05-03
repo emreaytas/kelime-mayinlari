@@ -237,22 +237,28 @@ export default function HomeScreen() {
   const handleJoinGame = async (gameType) => {
     try {
       if (!user) {
+        console.error("No user data found");
         Alert.alert("Hata", "Kullanıcı bilgileri yüklenemedi.");
         return;
       }
 
+      console.log("Attempting to join game:", gameType);
       setMatchmakingLoading(true);
       setMatchmakingType(gameType);
 
       // Eşleşme servisini kullan
       const result = await joinMatchmaking(gameType);
 
+      console.log("Matchmaking result:", result);
+
       if (result.status === "matched") {
         // Doğrudan eşleşme bulundu, oyun sayfasına yönlendir
+        console.log("Navigating to game:", result.gameId);
         router.push(`/game?gameId=${result.gameId}`);
         setMatchmakingLoading(false);
       } else if (result.status === "waiting") {
         // Eşleşme bekleniyor, durum bilgisini güncelle
+        console.log("Waiting for match");
         setWaitingForMatch(true);
         setMatchmakingLoading(false);
       }
@@ -264,7 +270,6 @@ export default function HomeScreen() {
       Alert.alert("Hata", "Oyuna katılırken bir hata oluştu: " + error.message);
     }
   };
-
   // Kalan süreyi formatlı şekilde göster
   const renderTimeLeft = (lastMoveTime, gameType) => {
     if (!lastMoveTime) return "";

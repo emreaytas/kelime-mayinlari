@@ -200,9 +200,10 @@ export const joinMatchmaking = async (gameType) => {
     }
 
     const userId = auth.currentUser.uid;
-    const username = auth.currentUser.displayName;
+    const username =
+      auth.currentUser.displayName || auth.currentUser.email || "Kullanıcı";
 
-    console.log("Joining matchmaking:", gameType, userId, username);
+    console.log("Joining matchmaking:", { gameType, userId, username });
 
     // Matchmaking referansı
     const matchmakingRef = ref(database, `matchmaking/${gameType}`);
@@ -211,13 +212,15 @@ export const joinMatchmaking = async (gameType) => {
     const snapshot = await get(matchmakingRef);
     const waitingPlayers = snapshot.val() || {};
 
+    console.log("Waiting players:", waitingPlayers);
+
     // Kendisi hariç bekleyen oyuncuları bul
     const otherPlayerIds = Object.keys(waitingPlayers).filter(
       (id) => id !== userId
     );
 
     if (otherPlayerIds.length > 0) {
-      // Eşleşme bulundu - ilk bekleyen oyuncu ile eşleş
+      // Eşleşme bulundu
       const opponentId = otherPlayerIds[0];
       const opponentData = waitingPlayers[opponentId];
 
@@ -234,6 +237,8 @@ export const joinMatchmaking = async (gameType) => {
         opponentData.username,
         gameType
       );
+
+      console.log("Game created:", game.gameId);
 
       return {
         status: "matched",
@@ -284,9 +289,7 @@ export const createNewGame = async (
   gameType
 ) => {
   try {
-    console.log("Creating new game:", player1Id, player2Id, gameType);
-
-    // Oyun tahtasını oluştur (sabit hücreler + rastgele mayınlar ve ödüller)
+    // Oyun tahtasını oluştur
     const gameBoard = createGameBoard();
 
     // Harf havuzu oluştur
@@ -302,6 +305,9 @@ export const createNewGame = async (
     // Oyun referansı oluştur
     const newGameRef = push(ref(database, "games"));
 
+    // Tahta verisini Firebase formatına çevir
+    const formattedBoard = boardToFirebaseFormat(gameBoard);
+
     // Oyun verisi
     const initialGameData = {
       player1: {
@@ -314,7 +320,7 @@ export const createNewGame = async (
         username: player2Username,
         score: 0,
       },
-      board: gameBoard,
+      board: formattedBoard, // Firebase formatına dönüştürülmüş tahta
       letterPool: remainingPool,
       player1Rack,
       player2Rack,
@@ -334,8 +340,6 @@ export const createNewGame = async (
 
     // Firebase'e oyun verisini kaydet
     await set(newGameRef, gameWithInitialWord);
-
-    console.log("Game created with ID:", newGameRef.key);
 
     return { gameId: newGameRef.key, ...gameWithInitialWord };
   } catch (error) {
@@ -401,33 +405,65 @@ export const placeWord = async (gameId, placedCells) => {
     }
 
     const userId = auth.currentUser.uid;
-
-    // Oyun verilerini al
     const game = await getGameData(gameId);
 
-    // Sıra kontrolü
     if (game.turnPlayer !== userId) {
       throw new Error("Sıra sizde değil");
     }
 
-    // Kullanıcı bilgisi
     const isPlayer1 = game.player1.id === userId;
     const userRack = isPlayer1 ? game.player1Rack : game.player2Rack;
 
+    // Tahta kontrolü ve normalizasyonu
+    if (!game.board) {
+      throw new Error("Oyun tahtası bulunamadı");
+    }
+
+    // Tahta verisini normalize et
+    let normalizedBoard = [];
+    for (let i = 0; i < 15; i++) {
+      normalizedBoard[i] = [];
+      for (let j = 0; j < 15; j++) {
+        if (Array.isArray(game.board) && game.board[i] && game.board[i][j]) {
+          normalizedBoard[i][j] = game.board[i][j];
+        } else if (
+          typeof game.board === "object" &&
+          game.board[i] &&
+          (game.board[i][j] || game.board[i][j.toString()])
+        ) {
+          normalizedBoard[i][j] =
+            game.board[i][j] || game.board[i][j.toString()];
+        } else {
+          normalizedBoard[i][j] = {
+            letter: null,
+            type: getCellType(i, j), // Hücre tipini belirle
+            special: null,
+            points: null,
+          };
+        }
+      }
+    }
+
     // Tahta kopyası oluştur
-    const boardCopy = JSON.parse(JSON.stringify(game.board));
+    const boardCopy = JSON.parse(JSON.stringify(normalizedBoard));
 
     // Kelimeyi oluştur ve doğrula
     let word = "";
     placedCells.forEach((cell) => {
-      const { rackIndex } = cell;
+      const { row, col, rackIndex } = cell;
+
+      // Tahta sınırlarını kontrol et
+      if (row < 0 || row >= 15 || col < 0 || col >= 15) {
+        throw new Error(`Geçersiz hücre konumu: [${row}][${col}]`);
+      }
+
       const letterObj = userRack[rackIndex];
       const letter =
         typeof letterObj === "object" ? letterObj.letter : letterObj;
       word += letter === "JOKER" ? "*" : letter;
     });
 
-    // Kelime kontrolü - geçerli değilse hata fırlat
+    // Kelime kontrolü
     if (!validateWord(word.toLowerCase())) {
       throw new Error("Geçersiz kelime");
     }
@@ -440,11 +476,10 @@ export const placeWord = async (gameId, placedCells) => {
         typeof letterObj === "object" ? letterObj.letter : letterObj;
       const points = typeof letterObj === "object" ? letterObj.points : 0;
 
-      // Harfi kalıcı olarak tahtaya yerleştir
       boardCopy[row][col] = {
         letter: letter,
         type: boardCopy[row][col].type || null,
-        special: null, // Özel öğe kullanıldıysa temizle
+        special: null,
         points: points,
       };
     });
@@ -459,7 +494,7 @@ export const placeWord = async (gameId, placedCells) => {
     // Her hücre için mayın/ödül kontrolü
     placedCells.forEach((cell) => {
       const { row, col } = cell;
-      const special = game.board[row][col].special;
+      const special = normalizedBoard[row][col].special;
 
       if (special) {
         // Mayın etkileri
@@ -717,17 +752,18 @@ function cleanGameDataForFirebase(gameData) {
     }
   });
 }
+
 const boardToFirebaseFormat = (board) => {
   const firebaseBoard = [];
 
-  for (let i = 0; i < board.length; i++) {
+  for (let i = 0; i < 15; i++) {
     const rowObject = {};
 
-    for (let j = 0; j < board[i].length; j++) {
+    for (let j = 0; j < 15; j++) {
       const cell = board[i][j];
 
-      // Tüm hücre özelliklerini kaydet
-      if (cell && (cell.letter || cell.type || cell.special)) {
+      // Hücre varsa ve içeriği varsa kaydet
+      if (cell) {
         rowObject[j] = {
           letter: cell.letter || null,
           type: cell.type || null,
@@ -1059,11 +1095,35 @@ export const getUserCompletedGames = async () => {
 
 // Kelime puanlarını hesapla
 export const calculateWordPoints = (placedCells, board, rack) => {
+  console.log("Calculating points for cells:", placedCells);
+  console.log("Board:", board);
+
   let totalPoints = 0;
   let wordMultiplier = 1;
 
   placedCells.forEach((cell) => {
     const { row, col, rackIndex } = cell;
+
+    // Debug
+    console.log(
+      `Processing cell: row=${row}, col=${col}, rackIndex=${rackIndex}`
+    );
+
+    // Board ve hücre kontrolü
+    if (!board) {
+      console.error("Board is undefined");
+      return;
+    }
+
+    if (!board[row]) {
+      console.error(`Board row ${row} is undefined`);
+      return;
+    }
+
+    if (!board[row][col]) {
+      console.error(`Board cell at [${row}][${col}] is undefined`);
+      return;
+    }
 
     // Harfi oyuncunun rafından al
     const letterObj = rack[rackIndex];
@@ -1073,16 +1133,19 @@ export const calculateWordPoints = (placedCells, board, rack) => {
     let letterPoint = letter === "JOKER" ? 0 : letterValues[letter] || 0;
 
     // Hücre tipini kontrol et (çarpanlar)
-    const cellType = board[row][col]?.type;
+    const cellData = board[row][col];
+    const cellType = cellData.type;
+
+    console.log(`Cell type: ${cellType}, Letter point: ${letterPoint}`);
 
     if (cellType === "H2") {
-      letterPoint *= 2; // Harf puanı 2 katı
+      letterPoint *= 2;
     } else if (cellType === "H3") {
-      letterPoint *= 3; // Harf puanı 3 katı
+      letterPoint *= 3;
     } else if (cellType === "K2") {
-      wordMultiplier *= 2; // Kelime puanı 2 katı
+      wordMultiplier *= 2;
     } else if (cellType === "K3") {
-      wordMultiplier *= 3; // Kelime puanı 3 katı
+      wordMultiplier *= 3;
     }
 
     totalPoints += letterPoint;
@@ -1091,5 +1154,144 @@ export const calculateWordPoints = (placedCells, board, rack) => {
   // Kelime çarpanını uygula
   totalPoints *= wordMultiplier;
 
+  console.log(`Total points: ${totalPoints}`);
   return totalPoints;
+};
+
+// Hücre tipini belirleyen yardımcı fonksiyon
+const getCellType = (row, col) => {
+  // H2 hücreleri (harf puanı 2 katı)
+  const h2Cells = [
+    [0, 5],
+    [0, 9],
+    [1, 6],
+    [1, 8],
+    [5, 0],
+    [5, 5],
+    [5, 9],
+    [5, 14],
+    [6, 1],
+    [6, 6],
+    [6, 8],
+    [6, 13],
+    [8, 1],
+    [8, 6],
+    [8, 8],
+    [8, 13],
+    [9, 0],
+    [9, 5],
+    [9, 9],
+    [9, 14],
+    [13, 6],
+    [13, 8],
+    [14, 5],
+    [14, 9],
+  ];
+
+  // H3 hücreleri (harf puanı 3 katı)
+  const h3Cells = [
+    [1, 1],
+    [1, 13],
+    [4, 4],
+    [4, 10],
+    [10, 4],
+    [10, 10],
+    [13, 1],
+    [13, 13],
+  ];
+
+  // K2 hücreleri (kelime puanı 2 katı)
+  const k2Cells = [
+    [2, 7],
+    [3, 3],
+    [3, 11],
+    [7, 2],
+    [7, 12],
+    [11, 3],
+    [11, 11],
+    [12, 7],
+  ];
+
+  // K3 hücreleri (kelime puanı 3 katı)
+  const k3Cells = [
+    [0, 2],
+    [0, 12],
+    [2, 0],
+    [2, 14],
+    [12, 0],
+    [12, 14],
+    [14, 2],
+    [14, 12],
+  ];
+
+  // Merkez yıldız
+  if (row === 7 && col === 7) {
+    return "star";
+  }
+
+  // Hücre tipini kontrol et
+  for (const [r, c] of h2Cells) {
+    if (r === row && c === col) return "H2";
+  }
+
+  for (const [r, c] of h3Cells) {
+    if (r === row && c === col) return "H3";
+  }
+
+  for (const [r, c] of k2Cells) {
+    if (r === row && c === col) return "K2";
+  }
+
+  for (const [r, c] of k3Cells) {
+    if (r === row && c === col) return "K3";
+  }
+
+  return null; // Normal hücre
+};
+
+const normalizeCompleteBoard = (boardData) => {
+  console.log("Normalizing board data:", boardData);
+
+  const normalizedBoard = [];
+
+  for (let i = 0; i < 15; i++) {
+    normalizedBoard[i] = [];
+    for (let j = 0; j < 15; j++) {
+      // Varsayılan boş hücre
+      let cell = {
+        letter: null,
+        type: getCellType(i, j),
+        special: null,
+      };
+
+      // Firebase verisini kontrol et
+      if (boardData) {
+        if (Array.isArray(boardData)) {
+          // Dizi formatı
+          if (boardData[i] && boardData[i][j]) {
+            cell = { ...cell, ...boardData[i][j] };
+          }
+        } else if (typeof boardData === "object") {
+          // Nesne formatı
+          if (boardData[i]) {
+            if (Array.isArray(boardData[i])) {
+              if (boardData[i][j]) {
+                cell = { ...cell, ...boardData[i][j] };
+              }
+            } else if (typeof boardData[i] === "object") {
+              const colData = boardData[i][j] || boardData[i][j.toString()];
+              if (colData) {
+                cell = { ...cell, ...colData };
+              }
+            }
+          }
+        }
+      }
+
+      normalizedBoard[i][j] = cell;
+    }
+  }
+
+  console.log("Normalized board:", normalizedBoard);
+  return normalizedBoard;
 };
