@@ -675,28 +675,50 @@ export default function GameInterface({ gameId }) {
 
   const confirmMove = async () => {
     console.log("=== confirmMove Debug ===");
+
     console.log("Selected cells:", selectedBoardCells);
-    console.log("Current word:", currentWord);
-    console.log("Is word valid:", wordValid);
+    console.log("Game board:", game?.board);
+    console.log("User rack:", getUserRack());
 
     if (!isUserTurn()) {
       showTemporaryMessage("Şu anda sıra sizde değil!");
       return;
     }
 
+    if (!game || !game.board) {
+      console.error("Game or game board not available");
+      showTemporaryMessage("Oyun verisi yüklenemedi!");
+      return;
+    }
+
+    // Seçili hücre yoksa uyarı göster
     if (selectedBoardCells.length === 0) {
       Alert.alert("Uyarı", "Lütfen önce bir kelime oluşturun!");
       return;
     }
 
-    // Kelimeyi kontrol et
-    if (!wordValid) {
+    // Tüm oluşan kelimeleri kontrol et
+    const allWordsValid = await validateAllFormedWords(
+      selectedBoardCells,
+      game.board
+    );
+
+    if (!allWordsValid) {
       Alert.alert(
         "Geçersiz Kelime",
-        `"${currentWord}" kelimesi geçerli değil. Lütfen geçerli bir kelime oluşturun.`
+        "Yerleştirdiğiniz harflerle oluşan kelimelerden biri veya daha fazlası geçersiz. Lütfen kontrol edin."
       );
       return;
     }
+
+    // Puan hesaplama (önizleme)
+    const rack = getUserRack();
+    const previewPoints = calculateWordPoints(
+      selectedBoardCells,
+      game.board,
+      rack
+    );
+    console.log(`Önizleme puanı: ${previewPoints}`);
 
     try {
       setConfirmingAction(true);
@@ -739,7 +761,6 @@ export default function GameInterface({ gameId }) {
         }
       }
     } catch (error) {
-      console.error("Kelime yerleştirme hatası:", error);
       Alert.alert("Hata", error.message || "Hamle yapılırken bir sorun oluştu");
     } finally {
       setConfirmingAction(false);
@@ -749,6 +770,207 @@ export default function GameInterface({ gameId }) {
   const cancelMove = () => {
     resetSelections();
     showTemporaryMessage("Hamle iptal edildi");
+  };
+
+  const validateAllFormedWords = async (placedCells, board) => {
+    console.log("=== validateAllFormedWords ===");
+
+    // 1. Ana yerleştirilen kelimeyi kontrol et
+    const mainWord = getMainWordFormed(placedCells, board);
+    console.log("Ana kelime:", mainWord);
+
+    if (mainWord.length >= 2 && !validateWord(mainWord.toLowerCase())) {
+      console.log("Ana kelime geçersiz:", mainWord);
+      return false;
+    }
+
+    // 2. Çapraz kelimeleri kontrol et
+    const crossWords = getCrossWordsFormed(placedCells, board);
+    console.log("Çapraz kelimeler:", crossWords);
+
+    for (const word of crossWords) {
+      if (word.length >= 2 && !validateWord(word.toLowerCase())) {
+        console.log("Çapraz kelime geçersiz:", word);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const getMainWordFormed = (placedCells, board) => {
+    if (placedCells.length === 0) return "";
+
+    const rack = getUserRack();
+
+    // Yerleştirme yönünü belirle
+    let direction = "horizontal";
+    if (placedCells.length > 1) {
+      if (placedCells[0].row === placedCells[1].row) {
+        direction = "horizontal";
+      } else if (placedCells[0].col === placedCells[1].col) {
+        direction = "vertical";
+      }
+    }
+
+    // Yerleştirilen hücreleri sırala
+    const sortedCells = [...placedCells].sort((a, b) => {
+      if (direction === "horizontal") {
+        return a.col - b.col;
+      } else {
+        return a.row - b.row;
+      }
+    });
+
+    // Başlangıç ve bitiş noktalarını belirle
+    let startRow = sortedCells[0].row;
+    let startCol = sortedCells[0].col;
+    let endRow = sortedCells[sortedCells.length - 1].row;
+    let endCol = sortedCells[sortedCells.length - 1].col;
+
+    // Komşu harfleri kontrol ederek kelimenin başlangıcını bul
+    if (direction === "horizontal") {
+      while (startCol > 0 && board[startRow][startCol - 1].letter) {
+        startCol--;
+      }
+      while (endCol < 14 && board[endRow][endCol + 1].letter) {
+        endCol++;
+      }
+    } else {
+      while (startRow > 0 && board[startRow - 1][startCol].letter) {
+        startRow--;
+      }
+      while (endRow < 14 && board[endRow + 1][endCol].letter) {
+        endRow++;
+      }
+    }
+
+    // Tam kelimeyi oluştur
+    let word = "";
+    if (direction === "horizontal") {
+      for (let col = startCol; col <= endCol; col++) {
+        const placedCell = placedCells.find(
+          (cell) => cell.row === startRow && cell.col === col
+        );
+        if (placedCell) {
+          const letterObj = rack[placedCell.rackIndex];
+          const letter =
+            typeof letterObj === "object" ? letterObj.letter : letterObj;
+          word += letter === "JOKER" ? "*" : letter;
+        } else if (board[startRow][col].letter) {
+          word += board[startRow][col].letter;
+        }
+      }
+    } else {
+      for (let row = startRow; row <= endRow; row++) {
+        const placedCell = placedCells.find(
+          (cell) => cell.row === row && cell.col === startCol
+        );
+        if (placedCell) {
+          const letterObj = rack[placedCell.rackIndex];
+          const letter =
+            typeof letterObj === "object" ? letterObj.letter : letterObj;
+          word += letter === "JOKER" ? "*" : letter;
+        } else if (board[row][startCol].letter) {
+          word += board[row][startCol].letter;
+        }
+      }
+    }
+
+    return word;
+  };
+
+  const getCrossWordsFormed = (placedCells, board) => {
+    const crossWords = [];
+    const rack = getUserRack();
+
+    // Yerleştirme yönünü belirle
+    let direction = "horizontal";
+    if (placedCells.length > 1) {
+      if (placedCells[0].row === placedCells[1].row) {
+        direction = "horizontal";
+      } else if (placedCells[0].col === placedCells[1].col) {
+        direction = "vertical";
+      }
+    }
+
+    // Her yerleştirilen harf için çapraz kelimeleri kontrol et
+    placedCells.forEach((cell) => {
+      let crossWord = "";
+      let startPos, endPos;
+
+      if (direction === "horizontal") {
+        // Dikey çapraz kelime ara
+        startPos = cell.row;
+        endPos = cell.row;
+
+        // Yukarı doğru kontrol et
+        while (startPos > 0 && board[startPos - 1][cell.col].letter) {
+          startPos--;
+        }
+
+        // Aşağı doğru kontrol et
+        while (endPos < 14 && board[endPos + 1][cell.col].letter) {
+          endPos++;
+        }
+
+        // Kelimeyi oluştur
+        if (endPos - startPos > 0) {
+          // En az 2 harfli olmalı
+          for (let row = startPos; row <= endPos; row++) {
+            const placedCell = placedCells.find(
+              (pc) => pc.row === row && pc.col === cell.col
+            );
+            if (placedCell) {
+              const letterObj = rack[placedCell.rackIndex];
+              const letter =
+                typeof letterObj === "object" ? letterObj.letter : letterObj;
+              crossWord += letter === "JOKER" ? "*" : letter;
+            } else if (board[row][cell.col].letter) {
+              crossWord += board[row][cell.col].letter;
+            }
+          }
+        }
+      } else {
+        // Yatay çapraz kelime ara
+        startPos = cell.col;
+        endPos = cell.col;
+
+        // Sola doğru kontrol et
+        while (startPos > 0 && board[cell.row][startPos - 1].letter) {
+          startPos--;
+        }
+
+        // Sağa doğru kontrol et
+        while (endPos < 14 && board[cell.row][endPos + 1].letter) {
+          endPos++;
+        }
+
+        // Kelimeyi oluştur
+        if (endPos - startPos > 0) {
+          // En az 2 harfli olmalı
+          for (let col = startPos; col <= endPos; col++) {
+            const placedCell = placedCells.find(
+              (pc) => pc.row === cell.row && pc.col === col
+            );
+            if (placedCell) {
+              const letterObj = rack[placedCell.rackIndex];
+              const letter =
+                typeof letterObj === "object" ? letterObj.letter : letterObj;
+              crossWord += letter === "JOKER" ? "*" : letter;
+            } else if (board[cell.row][col].letter) {
+              crossWord += board[cell.row][col].letter;
+            }
+          }
+        }
+      }
+
+      if (crossWord.length >= 2) {
+        crossWords.push(crossWord);
+      }
+    });
+
+    return crossWords;
   };
 
   const getMineEffectMessage = (effects) => {
@@ -1047,40 +1269,24 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Hücreleri sırala
-    const sortedCells = [...cells].sort((a, b) => {
-      if (placementDirection === "horizontal") {
-        return a.col - b.col;
-      } else if (placementDirection === "vertical") {
-        return a.row - b.row;
-      }
-      return 0;
-    });
+    // Ana kelimeyi al (komşu harflerle birlikte)
+    const mainWord = getMainWordFormed(cells, game.board);
+    setCurrentWord(mainWord);
 
-    // Kelimeyi oluştur
-    const rack = getUserRack();
-    let word = "";
-
-    sortedCells.forEach((cell) => {
-      const { rackIndex } = cell;
-      const letterObj = rack[rackIndex];
-      const letter =
-        typeof letterObj === "object" ? letterObj.letter : letterObj;
-      word += letter === "JOKER" ? "*" : letter;
-    });
-
-    setCurrentWord(word);
-
-    // Kelime en az 2 harf ise geçerliliğini kontrol et
-    if (word.length >= 2) {
-      // JOKER (*) karakterlerini A harfi ile değiştir
-      const wordToValidate = word.replace(/\*/g, "A").toLowerCase();
-      const isValid = validateWord(wordToValidate);
+    // Geçerliliği kontrol et
+    if (mainWord.length >= 2) {
+      const isValid = validateWord(mainWord.toLowerCase());
       setWordValid(isValid);
 
-      if (isValid && game && game.board) {
-        const points = calculateWordPoints(sortedCells, game.board, rack);
-        setEarnedPoints(points);
+      if (isValid) {
+        // Tahta verisi kontrolü
+        if (game && game.board) {
+          const points = calculateWordPoints(cells, game.board, getUserRack());
+          setEarnedPoints(points);
+        } else {
+          console.error("Game board not available for point calculation");
+          setEarnedPoints(0);
+        }
       } else {
         setEarnedPoints(0);
       }
@@ -1089,6 +1295,7 @@ export default function GameInterface({ gameId }) {
       setEarnedPoints(0);
     }
   };
+
   const createCompleteWord = (placedCells) => {
     if (!game || !game.board || placedCells.length === 0) return "";
 
