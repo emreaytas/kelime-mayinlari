@@ -99,10 +99,12 @@ export default function GameBoard({
 
       for (let j = 0; j < 15; j++) {
         // Güvenli erişim
-        const cellData =
-          board[i] && board[i][j]
-            ? board[i][j]
-            : { letter: null, type: null, special: null };
+        let cellData = { letter: null, type: null, special: null };
+
+        if (board && board[i] && board[i][j]) {
+          cellData = board[i][j];
+        }
+
         const isSelected = isCellSelected(i, j);
 
         let displayLetter = cellData.letter || null;

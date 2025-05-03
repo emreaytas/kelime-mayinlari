@@ -283,9 +283,26 @@ export default function GameInterface({ gameId }) {
 
       // Board'u normalize et
       if (gameData.board) {
-        gameData.board = normalizeBoard(gameData.board);
-        console.log("Board normalize edildi");
-        console.log("Yeni board[7][6]:", gameData.board[7][6]);
+        const normalizedBoard = normalizeBoard(gameData.board);
+        if (normalizedBoard) {
+          gameData.board = normalizedBoard;
+          console.log("Board normalize edildi");
+          console.log(
+            "Board boyutu:",
+            normalizedBoard.length,
+            "x",
+            normalizedBoard[0].length
+          );
+
+          // Test: belirli bir hücreyi kontrol et
+          if (normalizedBoard[7] && normalizedBoard[7][8]) {
+            console.log("board[7][8] değeri:", normalizedBoard[7][8]);
+          } else {
+            console.error("board[7][8] hala tanımlı değil!");
+          }
+        } else {
+          console.error("Board normalize edilemedi!");
+        }
       }
 
       // Oyun verilerini güncelle
