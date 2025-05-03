@@ -413,6 +413,7 @@ export default function GameInterface({ gameId }) {
 
     return normalizedBoard;
   };
+
   // Kullanıcının harflerini al
   const getUserRack = () => {
     if (!game || !auth.currentUser) return [];
