@@ -73,25 +73,20 @@ export default function GameInterface({ gameId }) {
   useEffect(() => {
     if (game) {
       const userRack = getUserRack();
-      // Seçili hücreler için kullanılan harflerin indekslerini al
-      const usedIndices = selectedBoardCells.map((cell) => cell.rackIndex);
 
-      // Kullanılmayan harfleri içeren yeni bir raf oluştur
-      const updatedRack = userRack.filter(
-        (_, index) => !usedIndices.includes(index)
-      );
-
-      // Görünür rafı güncelle
-      setVisibleRack(updatedRack);
+      // Eğer seçili hücreler varsa, kullanılan harfleri filtrele
+      if (selectedBoardCells.length > 0) {
+        const usedIndices = selectedBoardCells.map((cell) => cell.rackIndex);
+        const updatedRack = userRack.filter(
+          (_, index) => !usedIndices.includes(index)
+        );
+        setVisibleRack(updatedRack);
+      } else {
+        // Seçili hücre yoksa, tüm rafı göster
+        setVisibleRack(userRack);
+      }
     }
   }, [game, selectedBoardCells]);
-
-  useEffect(() => {
-    // Oyun verisi değiştiğinde, görünür rafı başlangıçta ayarla
-    if (game) {
-      setVisibleRack(getUserRack());
-    }
-  }, [game]);
 
   useEffect(() => {
     if (!game || !isUserTurn() || !gameId) return;
@@ -577,9 +572,29 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
+    // Gerçek kullanıcı rafını al (visibleRack değil)
+    const fullRack = getUserRack();
+
+    // Daha önce yerleştirilmiş harflerin indekslerini al
+    const usedIndices = selectedBoardCells.map((cell) => cell.rackIndex);
+
+    // Görünür raftaki indeksi, gerçek raftaki indekse dönüştür
+    let realIndex = index;
+    for (let i = 0; i <= index; i++) {
+      if (usedIndices.includes(i)) {
+        realIndex++;
+      }
+    }
+
+    // Gerçek indeksin geçerli olduğunu kontrol et
+    if (realIndex >= fullRack.length) {
+      showTemporaryMessage("Geçersiz harf seçimi!");
+      return;
+    }
+
     // Seçili rafları güncelle
     const newSelectedIndices = [...selectedRackIndices];
-    const indexPos = newSelectedIndices.indexOf(index);
+    const indexPos = newSelectedIndices.indexOf(realIndex);
 
     if (indexPos !== -1) {
       // Eğer bu raf zaten seçiliyse, seçimi kaldır
@@ -588,24 +603,20 @@ export default function GameInterface({ gameId }) {
       showTemporaryMessage("Harf seçimi kaldırıldı");
     } else {
       // Yeni bir raf seçimi yap
-      // Tek seferde sadece 1 harf seçilebilir
-      setSelectedRackIndices([index]);
+      setSelectedRackIndices([realIndex]);
       showTemporaryMessage("Şimdi tahtada bir hücre seçin");
 
       // Debug için log
-      const userRack = getUserRack();
-      if (userRack && index >= 0 && index < userRack.length) {
-        const letter = userRack[index];
+      if (fullRack && realIndex >= 0 && realIndex < fullRack.length) {
+        const letter = fullRack[realIndex];
         console.log(
           `Seçilen harf: ${
             typeof letter === "object" ? letter.letter : letter
-          }, indeks: ${index}`
+          }, gerçek indeks: ${realIndex}, görünür indeks: ${index}`
         );
       }
     }
-  };
-
-  // Hamleyi onayla ve sunucuya gönder
+  }; // Hamleyi onayla ve sunucuya gönder
   // Bu kısmı confirmMove fonksiyonu olarak güncelle
   // src/components/GameInterface.jsx içindeki confirmMove fonksiyonunu güncelleyelim
 
@@ -810,7 +821,6 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Artık normalize edilmiş board'u kullanabiliriz
     if (!game.board[row]) {
       console.error(`game.board[${row}] tanımlı değil!`);
       return;
@@ -835,7 +845,7 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Seçilen raf indeksini al
+    // Seçilen raf indeksini al (gerçek indeks)
     const rackIndex = selectedRackIndices[0];
 
     // Hücre dolu mu kontrol et (sadece kalıcı harfler için)
@@ -884,8 +894,7 @@ export default function GameInterface({ gameId }) {
     updateCurrentWord(newSelectedCells);
 
     console.log("Harf yerleştirildi:", { row, col, rackIndex });
-  };
-  // checkValidPlacement fonksiyonunu da güncelleyelim
+  }; // checkValidPlacement fonksiyonunu da güncelleyelim
 
   const checkValidPlacement = (row, col) => {
     if (selectedBoardCells.length === 0) {
@@ -1220,28 +1229,15 @@ export default function GameInterface({ gameId }) {
 
   // Tüm seçimleri sıfırla
   const resetSelections = () => {
-    // Clear all selected board cells
     setSelectedBoardCells([]);
-
-    // Clear all selected rack indices
     setSelectedRackIndices([]);
-
-    // Reset placement direction
     setPlacementDirection(null);
-
-    // Clear current word
     setCurrentWord("");
-
-    // Reset word validation status
     setWordValid(false);
-
-    // Reset earned points
     setEarnedPoints(0);
-
-    // Reset active reward
     setActiveReward(null);
 
-    // Update visible rack to match the user's full rack
+    // Görünür rafı sıfırla
     if (game) {
       setVisibleRack(getUserRack());
     }
@@ -1589,7 +1585,21 @@ export default function GameInterface({ gameId }) {
       <View style={styles.rackContainer}>
         <LetterRack
           letters={visibleRack}
-          selectedIndices={selectedRackIndices}
+          selectedIndices={selectedRackIndices.map((realIndex) => {
+            // Gerçek indeksi görünür indekse dönüştür
+            let visibleIndex = realIndex;
+            const usedIndices = selectedBoardCells.map(
+              (cell) => cell.rackIndex
+            );
+
+            for (let i = 0; i < realIndex; i++) {
+              if (usedIndices.includes(i)) {
+                visibleIndex--;
+              }
+            }
+
+            return visibleIndex;
+          })}
           onTilePress={handleRackTileSelect}
         />
       </View>
