@@ -398,6 +398,8 @@ export const listenToGameChanges = (gameId, callback) => {
   }
 };
 
+// src/services/gameService.js içinde placeWord fonksiyonunu güncelle
+
 export const placeWord = async (gameId, placedCells) => {
   try {
     if (!auth.currentUser) {
@@ -436,7 +438,7 @@ export const placeWord = async (gameId, placedCells) => {
         } else {
           normalizedBoard[i][j] = {
             letter: null,
-            type: getCellType(i, j), // Hücre tipini belirle
+            type: getCellType(i, j),
             special: null,
             points: null,
           };
@@ -451,12 +453,6 @@ export const placeWord = async (gameId, placedCells) => {
     let word = "";
     placedCells.forEach((cell) => {
       const { row, col, rackIndex } = cell;
-
-      // Tahta sınırlarını kontrol et
-      if (row < 0 || row >= 15 || col < 0 || col >= 15) {
-        throw new Error(`Geçersiz hücre konumu: [${row}][${col}]`);
-      }
-
       const letterObj = userRack[rackIndex];
       const letter =
         typeof letterObj === "object" ? letterObj.letter : letterObj;
@@ -464,7 +460,8 @@ export const placeWord = async (gameId, placedCells) => {
     });
 
     // Kelime kontrolü
-    if (!validateWord(word.toLowerCase())) {
+    const wordToValidate = word.replace(/\*/g, "A").toLowerCase();
+    if (!validateWord(wordToValidate)) {
       throw new Error("Geçersiz kelime");
     }
 
@@ -641,6 +638,87 @@ export const placeWord = async (gameId, placedCells) => {
     console.error("Place word error:", error);
     throw error;
   }
+};
+
+const createCompleteWord = (placedCells, board, rack) => {
+  if (!board || placedCells.length === 0) return "";
+
+  let direction = "horizontal";
+  if (placedCells.length > 1) {
+    direction =
+      placedCells[0].row === placedCells[1].row ? "horizontal" : "vertical";
+  }
+
+  const firstCell = placedCells[0];
+  let startRow = firstCell.row;
+  let startCol = firstCell.col;
+  let endRow = firstCell.row;
+  let endCol = firstCell.col;
+
+  placedCells.forEach((cell) => {
+    startRow = Math.min(startRow, cell.row);
+    startCol = Math.min(startCol, cell.col);
+    endRow = Math.max(endRow, cell.row);
+    endCol = Math.max(endCol, cell.col);
+  });
+
+  if (direction === "horizontal") {
+    while (startCol > 0 && board[startRow][startCol - 1]?.letter) {
+      startCol--;
+    }
+    while (endCol < 14 && board[startRow][endCol + 1]?.letter) {
+      endCol++;
+    }
+  } else {
+    while (startRow > 0 && board[startRow - 1][startCol]?.letter) {
+      startRow--;
+    }
+    while (endRow < 14 && board[endRow + 1][startCol]?.letter) {
+      endRow++;
+    }
+  }
+
+  let word = "";
+
+  if (direction === "horizontal") {
+    for (let col = startCol; col <= endCol; col++) {
+      const cell = board[startRow][col];
+
+      if (cell?.letter) {
+        word += cell.letter;
+      } else {
+        const placedCell = placedCells.find(
+          (pc) => pc.row === startRow && pc.col === col
+        );
+        if (placedCell) {
+          const letterObj = rack[placedCell.rackIndex];
+          const letter =
+            typeof letterObj === "object" ? letterObj.letter : letterObj;
+          word += letter === "JOKER" ? "*" : letter;
+        }
+      }
+    }
+  } else {
+    for (let row = startRow; row <= endRow; row++) {
+      const cell = board[row][startCol];
+
+      if (cell?.letter) {
+        word += cell.letter;
+      } else {
+        const placedCell = placedCells.find(
+          (pc) => pc.row === row && pc.col === startCol
+        );
+        if (placedCell) {
+          const letterObj = rack[placedCell.rackIndex];
+          const letter =
+            typeof letterObj === "object" ? letterObj.letter : letterObj;
+          word += letter === "JOKER" ? "*" : letter;
+        }
+      }
+    }
+  }
+
+  return word;
 };
 
 export const calculateRawPoints = (placedCells, rack) => {
