@@ -398,8 +398,6 @@ export const listenToGameChanges = (gameId, callback) => {
   }
 };
 
-// src/services/gameService.js içinde placeWord fonksiyonunu güncelle
-
 export const placeWord = async (gameId, placedCells) => {
   try {
     if (!auth.currentUser) {
@@ -449,31 +447,23 @@ export const placeWord = async (gameId, placedCells) => {
     // Tahta kopyası oluştur
     const boardCopy = JSON.parse(JSON.stringify(normalizedBoard));
 
-    // Ana kelimeyi oluştur
-    const mainWord = getMainWordFormed(placedCells, normalizedBoard, userRack);
+    // Kelimeyi oluştur ve doğrula
+    let word = "";
+    placedCells.forEach((cell) => {
+      const { row, col, rackIndex } = cell;
+      const letterObj = userRack[rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+      word += letter === "JOKER" ? "*" : letter;
+    });
 
-    // Ana kelimeyi doğrula
-    const mainWordToValidate = mainWord.replace(/\*/g, "A").toLowerCase();
-    if (mainWord.length >= 2 && !wordList.includes(mainWordToValidate)) {
-      throw new Error("Geçersiz kelime: " + mainWord);
+    // Kelime kontrolü
+    const wordToValidate = word.replace(/\*/g, "A").toLowerCase();
+    if (!validateWord(wordToValidate)) {
+      throw new Error("Geçersiz kelime");
     }
 
-    // Çapraz kelimeleri kontrol et
-    const crossWords = getCrossWordsFormed(
-      placedCells,
-      normalizedBoard,
-      userRack
-    );
-
-    // Her çapraz kelimeyi doğrula
-    for (const crossWord of crossWords) {
-      const crossWordToValidate = crossWord.replace(/\*/g, "A").toLowerCase();
-      if (crossWord.length >= 2 && !wordList.includes(crossWordToValidate)) {
-        throw new Error("Geçersiz çapraz kelime: " + crossWord);
-      }
-    }
-
-    // Kelimeler onaylandı, şimdi harfleri kalıcı olarak yerleştir
+    // Kelime onaylandı, şimdi harfleri kalıcı olarak yerleştir
     placedCells.forEach((cell) => {
       const { row, col, rackIndex } = cell;
       const letterObj = userRack[rackIndex];
@@ -492,7 +482,160 @@ export const placeWord = async (gameId, placedCells) => {
     // Puanları hesapla
     let points = calculateWordPoints(placedCells, boardCopy, userRack);
 
-    // Mayın/ödül kontrolü ve geri kalan kod aynı kalıyor...
+    // Mayın/ödül kontrolü
+    const effects = {};
+    const rewards = [];
+
+    // Her hücre için mayın/ödül kontrolü
+    placedCells.forEach((cell) => {
+      const { row, col } = cell;
+      const special = normalizedBoard[row][col].special;
+
+      if (special) {
+        // Mayın etkileri
+        if (special === "PuanBolunmesi") {
+          effects.pointDivision = true;
+          points = Math.round(points * 0.3);
+        } else if (special === "PuanTransferi") {
+          effects.pointTransfer = true;
+          const opponentPoints = points;
+          points = -points;
+          if (isPlayer1) {
+            game.player2.score = (game.player2.score || 0) + opponentPoints;
+          } else {
+            game.player1.score = (game.player1.score || 0) + opponentPoints;
+          }
+        } else if (special === "HarfKaybi") {
+          effects.letterLoss = true;
+        } else if (special === "EkstraHamleEngeli") {
+          effects.moveBlockade = true;
+          points = calculateRawPoints(placedCells, userRack);
+        } else if (special === "KelimeIptali") {
+          effects.wordCancellation = true;
+          points = 0;
+        }
+
+        // Ödül etkileri
+        if (
+          special === "BolgeYasagi" ||
+          special === "HarfYasagi" ||
+          special === "EkstraHamleJokeri"
+        ) {
+          rewards.push(special);
+        }
+      }
+    });
+
+    // Kullanılan harflerin yerine yenilerini al
+    let userRackCopy = [...userRack];
+    const usedIndices = placedCells
+      .map((cell) => cell.rackIndex)
+      .sort((a, b) => b - a);
+    usedIndices.forEach((index) => {
+      userRackCopy.splice(index, 1);
+    });
+
+    // Harf Kaybı mayını
+    if (effects.letterLoss) {
+      game.letterPool = [...game.letterPool, ...userRackCopy];
+      userRackCopy = [];
+    }
+
+    // Yeni harfleri çek
+    const neededLetterCount = Math.min(
+      7 - userRackCopy.length,
+      game.letterPool.length
+    );
+    const newLetters = game.letterPool.slice(0, neededLetterCount);
+    const updatedLetterPool = game.letterPool.slice(neededLetterCount);
+    userRackCopy = [...userRackCopy, ...newLetters];
+
+    // Ödülleri güncelle
+    let player1Rewards = Array.isArray(game.player1Rewards)
+      ? [...game.player1Rewards]
+      : [];
+    let player2Rewards = Array.isArray(game.player2Rewards)
+      ? [...game.player2Rewards]
+      : [];
+
+    if (rewards.length > 0) {
+      if (isPlayer1) {
+        player1Rewards = [...player1Rewards, ...rewards];
+      } else {
+        player2Rewards = [...player2Rewards, ...rewards];
+      }
+    }
+
+    // Tahtayı Firebase formatına dönüştür
+    const firebaseBoard = boardToFirebaseFormat(boardCopy);
+
+    // Sıradaki oyuncu
+    const nextPlayer =
+      game.player1.id === userId ? game.player2.id : game.player1.id;
+
+    // Oyun verilerini güncelle
+    const updates = {
+      board: firebaseBoard,
+      letterPool: updatedLetterPool,
+      lastMoveTime: Date.now(),
+      turnPlayer: nextPlayer,
+      firstMove: false,
+      centerRequired: false,
+      consecutivePasses: 0,
+    };
+
+    // Puanları güncelle
+    if (isPlayer1) {
+      updates.player1 = {
+        ...game.player1,
+        score: (game.player1.score || 0) + points,
+      };
+      updates.player1Rack = userRackCopy;
+      updates.player1Rewards = player1Rewards;
+    } else {
+      updates.player2 = {
+        ...game.player2,
+        score: (game.player2.score || 0) + points,
+      };
+      updates.player2Rack = userRackCopy;
+      updates.player2Rewards = player2Rewards;
+    }
+
+    // Puan transferi
+    if (effects.pointTransfer) {
+      if (isPlayer1) {
+        updates.player2 = {
+          ...game.player2,
+          score: (game.player2.score || 0) + Math.abs(points),
+        };
+      } else {
+        updates.player1 = {
+          ...game.player1,
+          score: (game.player1.score || 0) + Math.abs(points),
+        };
+      }
+    }
+
+    // Oyun bitişi kontrolü
+    if (userRackCopy.length === 0 && updatedLetterPool.length === 0) {
+      updates.status = "completed";
+      updates.completedAt = Date.now();
+      updates.reason = "allLettersUsed";
+      updates.winner = userId;
+    }
+
+    // Firebase güncelle
+    await update(ref(database, `games/${gameId}`), updates);
+
+    // Sonucu döndür
+    return {
+      success: true,
+      points: points,
+      effects: effects,
+      rewards: rewards,
+      nextPlayer: nextPlayer,
+      gameEnded: updates.status === "completed",
+    };
   } catch (error) {
     console.error("Place word error:", error);
     throw error;

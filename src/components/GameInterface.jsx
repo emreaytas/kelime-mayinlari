@@ -280,7 +280,7 @@ export default function GameInterface({ gameId }) {
 
   const showBoardSpecialsOnly = (gameData) => {
     console.log("\n=== OYUN TAHTASI - MAYINLAR VE ÖDÜLLER ===");
-
+    console.log("\n=========================================\n");
     // Tahta matrisi oluştur
     let matrixString = "    ";
     for (let i = 0; i < 15; i++) {
@@ -798,7 +798,6 @@ export default function GameInterface({ gameId }) {
 
   const confirmMove = async () => {
     console.log("=== confirmMove Debug ===");
-
     console.log("Selected cells:", selectedBoardCells);
     console.log("Game board:", game?.board);
     console.log("User rack:", getUserRack());
@@ -814,18 +813,16 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Seçili hücre yoksa uyarı göster
     if (selectedBoardCells.length === 0) {
       Alert.alert("Uyarı", "Lütfen önce bir kelime oluşturun!");
       return;
     }
 
-    // Tüm oluşan kelimeleri kontrol et
+    // Kelime doğrulaması
     const allWordsValid = await validateAllFormedWords(
       selectedBoardCells,
       game.board
     );
-
     if (!allWordsValid) {
       Alert.alert(
         "Geçersiz Kelime",
@@ -834,22 +831,14 @@ export default function GameInterface({ gameId }) {
       return;
     }
 
-    // Puan hesaplama (önizleme)
-    const rack = getUserRack();
-    const previewPoints = calculateWordPoints(
-      selectedBoardCells,
-      game.board,
-      rack
-    );
-    console.log(`Önizleme puanı: ${previewPoints}`);
-
     try {
       setConfirmingAction(true);
 
       // Kelime yerleştirme işlemini gerçekleştir
       const result = await placeWord(gameId, selectedBoardCells);
 
-      if (result.success) {
+      // Sonuç kontrolü
+      if (result && result.success) {
         // Yerleştirme başarılı, seçimleri sıfırla
         resetSelections();
 
@@ -882,14 +871,18 @@ export default function GameInterface({ gameId }) {
             result.effects ? 2000 : 1000
           );
         }
+      } else {
+        // result null veya success değeri yok
+        console.error("placeWord result is invalid:", result);
+        throw new Error("Beklenmeyen sonuç");
       }
     } catch (error) {
+      console.error("confirmMove error:", error);
       Alert.alert("Hata", error.message || "Hamle yapılırken bir sorun oluştu");
     } finally {
       setConfirmingAction(false);
     }
   };
-
   const cancelMove = () => {
     resetSelections();
     showTemporaryMessage("Hamle iptal edildi");
