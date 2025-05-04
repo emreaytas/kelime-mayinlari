@@ -1558,8 +1558,7 @@ const getMainWordFormed = (placedCells, board, rack) => {
     }
   }
 
-  // Eğer tek harf yerleştiriliyorsa, etrafındaki harflerle birlikte
-  // yönü belirlemek için kontrol yap
+  // Tek harf yerleştiriliyorsa, etrafındaki harflerle birlikte yönü belirle
   if (placedCells.length === 1) {
     const cell = placedCells[0];
 
@@ -1594,21 +1593,21 @@ const getMainWordFormed = (placedCells, board, rack) => {
       if (cell.col > endCol) endCol = cell.col;
     });
 
-    // Sol tarafı kontrol et - sadece bitişik harfleri al
+    // Sol tarafı kontrol et
     let tempStartCol = startCol;
     while (tempStartCol > 0 && board[row][tempStartCol - 1]?.letter) {
       tempStartCol--;
     }
     startCol = tempStartCol;
 
-    // Sağ tarafı kontrol et - sadece bitişik harfleri al
+    // Sağ tarafı kontrol et
     let tempEndCol = endCol;
     while (tempEndCol < 14 && board[row][tempEndCol + 1]?.letter) {
       tempEndCol++;
     }
     endCol = tempEndCol;
 
-    // Kelimeyi oluştur - sadece bitişik hücreleri kullan
+    // Kelimeyi oluştur
     let word = "";
     for (let col = startCol; col <= endCol; col++) {
       const placedCell = placedCells.find(
@@ -1622,9 +1621,6 @@ const getMainWordFormed = (placedCells, board, rack) => {
         word += letter === "JOKER" ? "*" : letter;
       } else if (board[row][col]?.letter) {
         word += board[row][col].letter;
-      } else {
-        // Boş hücre bulundu, bu noktada kelime bitmeli
-        break;
       }
     }
     return word;
@@ -1639,21 +1635,21 @@ const getMainWordFormed = (placedCells, board, rack) => {
       if (cell.row > endRow) endRow = cell.row;
     });
 
-    // Üst tarafı kontrol et - sadece bitişik harfleri al
+    // Üst tarafı kontrol et
     let tempStartRow = startRow;
     while (tempStartRow > 0 && board[tempStartRow - 1][col]?.letter) {
       tempStartRow--;
     }
     startRow = tempStartRow;
 
-    // Alt tarafı kontrol et - sadece bitişik harfleri al
+    // Alt tarafı kontrol et
     let tempEndRow = endRow;
     while (tempEndRow < 14 && board[tempEndRow + 1][col]?.letter) {
       tempEndRow++;
     }
     endRow = tempEndRow;
 
-    // Kelimeyi oluştur - sadece bitişik hücreleri kullan
+    // Kelimeyi oluştur
     let word = "";
     for (let row = startRow; row <= endRow; row++) {
       const placedCell = placedCells.find(
@@ -1667,21 +1663,29 @@ const getMainWordFormed = (placedCells, board, rack) => {
         word += letter === "JOKER" ? "*" : letter;
       } else if (board[row][col]?.letter) {
         word += board[row][col].letter;
-      } else {
-        // Boş hücre bulundu, bu noktada kelime bitmeli
-        break;
       }
     }
     return word;
-  } else {
-    // diagonal
-    const dx = Math.sign(sortedCells[1]?.col - sortedCells[0].col || 1);
-    const dy = Math.sign(sortedCells[1]?.row - sortedCells[0].row || 1);
+  } else if (direction === "diagonal") {
+    // Diagonal için hücreleri sırala
+    const sortedCells = [...placedCells].sort((a, b) => {
+      return a.row + a.col - (b.row + b.col);
+    });
+
+    // Çapraz yönü belirle
+    const dx =
+      sortedCells.length > 1
+        ? Math.sign(sortedCells[1].col - sortedCells[0].col)
+        : 1;
+    const dy =
+      sortedCells.length > 1
+        ? Math.sign(sortedCells[1].row - sortedCells[0].row)
+        : 1;
 
     let startRow = sortedCells[0].row;
     let startCol = sortedCells[0].col;
 
-    // Başlangıç noktasını bul - güvenli erişim
+    // Başlangıç noktasını bul
     while (
       startRow - dy >= 0 &&
       startRow - dy < 15 &&
@@ -1713,13 +1717,11 @@ const getMainWordFormed = (placedCells, board, rack) => {
       );
 
       if (placedCell) {
-        // Yeni yerleştirilen harf
         const letterObj = rack[placedCell.rackIndex];
         const letter =
           typeof letterObj === "object" ? letterObj.letter : letterObj;
         word += letter === "JOKER" ? "*" : letter;
       } else {
-        // Tahtada mevcut harf - güvenli erişim
         const boardCell = board[currentRow] && board[currentRow][currentCol];
 
         if (boardCell && boardCell.letter) {
@@ -1736,6 +1738,7 @@ const getMainWordFormed = (placedCells, board, rack) => {
     return word;
   }
 };
+
 // getCrossWordsFormed fonksiyonunu güncelle - çapraz kelimeler için kontrol ekle
 const getCrossWordsFormed = (placedCells, board, rack) => {
   if (!placedCells || !board || !rack) return [];
@@ -1745,14 +1748,84 @@ const getCrossWordsFormed = (placedCells, board, rack) => {
 
   placedCells.forEach((cell) => {
     if (mainDirection === "diagonal") {
-      // ... diagonal işlemleri (önceki kod aynı kalabilir)
+      // Çapraz yerleştirmede, hem yatay hem dikey kelimeleri kontrol et
+
+      // Yatay kelime kontrolü
+      let hWord = "";
+      let hStartCol = cell.col;
+      let hEndCol = cell.col;
+
+      // Sol tarafı kontrol et
+      while (hStartCol > 0 && board[cell.row][hStartCol - 1]?.letter) {
+        hStartCol--;
+      }
+
+      // Sağ tarafı kontrol et
+      while (hEndCol < 14 && board[cell.row][hEndCol + 1]?.letter) {
+        hEndCol++;
+      }
+
+      // Yatay kelime oluştur (en az 2 harf olmalı)
+      if (hEndCol - hStartCol > 0) {
+        for (let col = hStartCol; col <= hEndCol; col++) {
+          const placedCell = placedCells.find(
+            (pc) => pc.row === cell.row && pc.col === col
+          );
+          if (placedCell) {
+            const letterObj = rack[placedCell.rackIndex];
+            const letter =
+              typeof letterObj === "object" ? letterObj.letter : letterObj;
+            hWord += letter === "JOKER" ? "*" : letter;
+          } else if (board[cell.row][col]?.letter) {
+            hWord += board[cell.row][col].letter;
+          }
+        }
+        if (hWord.length >= 2) {
+          crossWords.push(hWord);
+        }
+      }
+
+      // Dikey kelime kontrolü
+      let vWord = "";
+      let vStartRow = cell.row;
+      let vEndRow = cell.row;
+
+      // Yukarı tarafı kontrol et
+      while (vStartRow > 0 && board[vStartRow - 1][cell.col]?.letter) {
+        vStartRow--;
+      }
+
+      // Aşağı tarafı kontrol et
+      while (vEndRow < 14 && board[vEndRow + 1][cell.col]?.letter) {
+        vEndRow++;
+      }
+
+      // Dikey kelime oluştur (en az 2 harf olmalı)
+      if (vEndRow - vStartRow > 0) {
+        for (let row = vStartRow; row <= vEndRow; row++) {
+          const placedCell = placedCells.find(
+            (pc) => pc.row === row && pc.col === cell.col
+          );
+          if (placedCell) {
+            const letterObj = rack[placedCell.rackIndex];
+            const letter =
+              typeof letterObj === "object" ? letterObj.letter : letterObj;
+            vWord += letter === "JOKER" ? "*" : letter;
+          } else if (board[row][cell.col]?.letter) {
+            vWord += board[row][cell.col].letter;
+          }
+        }
+        if (vWord.length >= 2) {
+          crossWords.push(vWord);
+        }
+      }
     } else {
-      // Normal yatay/dikey çapraz kelime kontrolü
+      // Normal yatay/dikey yerleştirme için çapraz kontrol
       let crossWord = "";
       let startPos, endPos;
 
       if (mainDirection === "horizontal") {
-        // Dikey çapraz kelime ara - güvenli erişim
+        // Dikey çapraz kelime ara
         startPos = cell.row;
         endPos = cell.row;
 
@@ -1791,7 +1864,7 @@ const getCrossWordsFormed = (placedCells, board, rack) => {
           }
         }
       } else if (mainDirection === "vertical") {
-        // Yatay çapraz kelime ara - güvenli erişim
+        // Yatay çapraz kelime ara
         startPos = cell.col;
         endPos = cell.col;
 
