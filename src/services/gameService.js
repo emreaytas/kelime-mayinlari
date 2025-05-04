@@ -412,14 +412,9 @@ export const placeWord = async (gameId, placedCells) => {
     }
 
     const isPlayer1 = game.player1.id === userId;
-    const userRack = isPlayer1 ? game.player1Rack : game.player2Rack;
+    const userRack = isPlayer1 ? game.player1Rack : game.player2Rack; // Bu zaten var!
 
-    // Tahta kontrolü ve normalizasyonu
-    if (!game.board) {
-      throw new Error("Oyun tahtası bulunamadı");
-    }
-
-    // Tahta verisini normalize et
+    // Tahta normalizasyonu
     let normalizedBoard = [];
     for (let i = 0; i < 15; i++) {
       normalizedBoard[i] = [];
@@ -444,26 +439,30 @@ export const placeWord = async (gameId, placedCells) => {
       }
     }
 
-    // Tahta kopyası oluştur
-    const boardCopy = JSON.parse(JSON.stringify(normalizedBoard));
+    // Ana kelimeyi oluştur - getUserRack() yerine userRack kullan
+    const mainWord = getMainWordFormed(placedCells, normalizedBoard, userRack);
+    const mainWordToValidate = mainWord.replace(/\*/g, "A").toLowerCase();
 
-    // Kelimeyi oluştur ve doğrula
-    let word = "";
-    placedCells.forEach((cell) => {
-      const { row, col, rackIndex } = cell;
-      const letterObj = userRack[rackIndex];
-      const letter =
-        typeof letterObj === "object" ? letterObj.letter : letterObj;
-      word += letter === "JOKER" ? "*" : letter;
-    });
-
-    // Kelime kontrolü
-    const wordToValidate = word.replace(/\*/g, "A").toLowerCase();
-    if (!validateWord(wordToValidate)) {
-      throw new Error("Geçersiz kelime");
+    if (mainWord.length >= 2 && !wordList.includes(mainWordToValidate)) {
+      throw new Error("Geçersiz kelime: " + mainWord);
     }
 
-    // Kelime onaylandı, şimdi harfleri kalıcı olarak yerleştir
+    // Çapraz kelimeleri kontrol et - getUserRack() yerine userRack kullan
+    const crossWords = getCrossWordsFormed(
+      placedCells,
+      normalizedBoard,
+      userRack
+    );
+
+    for (const crossWord of crossWords) {
+      const crossWordToValidate = crossWord.replace(/\*/g, "A").toLowerCase();
+      if (crossWord.length >= 2 && !wordList.includes(crossWordToValidate)) {
+        throw new Error("Geçersiz çapraz kelime: " + crossWord);
+      }
+    }
+
+    // Kelimeler onaylandı, harfleri yerleştir
+    const boardCopy = JSON.parse(JSON.stringify(normalizedBoard));
     placedCells.forEach((cell) => {
       const { row, col, rackIndex } = cell;
       const letterObj = userRack[rackIndex];
@@ -479,7 +478,7 @@ export const placeWord = async (gameId, placedCells) => {
       };
     });
 
-    // Puanları hesapla
+    // Puanları hesapla - getUserRack() yerine userRack kullan
     let points = calculateWordPoints(placedCells, boardCopy, userRack);
 
     // Mayın/ödül kontrolü
@@ -1183,67 +1182,223 @@ export const getUserCompletedGames = async () => {
 
 // Kelime puanlarını hesapla
 export const calculateWordPoints = (placedCells, board, rack) => {
-  console.log("Calculating points for cells:", placedCells);
-  console.log("Board:", board);
+  if (!board || !placedCells.length) return 0;
 
   let totalPoints = 0;
   let wordMultiplier = 1;
 
-  placedCells.forEach((cell) => {
-    const { row, col, rackIndex } = cell;
+  // Yerleştirme yönünü belirle
+  const direction = getPlacementDirection(placedCells);
 
-    // Debug
-    console.log(
-      `Processing cell: row=${row}, col=${col}, rackIndex=${rackIndex}`
-    );
+  // Ana kelimeyi oluşturan tüm hücreleri al
+  const wordCells = getFullWordCells(placedCells, board, direction);
 
-    // Board ve hücre kontrolü
-    if (!board) {
-      console.error("Board is undefined");
-      return;
+  // Ana kelime puanını hesapla
+  wordCells.forEach((cell) => {
+    let letterPoint = 0;
+    let letterMultiplier = 1;
+
+    if (cell.isPlaced) {
+      // Yeni yerleştirilen harf
+      const letterObj = rack[cell.rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+      letterPoint = letter === "JOKER" ? 0 : letterValues[letter] || 0;
+
+      // Özel hücre çarpanları (sadece yeni yerleştirilen harfler için)
+      const cellType = board[cell.row][cell.col].type;
+
+      switch (cellType) {
+        case "H2":
+          letterMultiplier = 2;
+          break;
+        case "H3":
+          letterMultiplier = 3;
+          break;
+        case "K2":
+          wordMultiplier *= 2;
+          break;
+        case "K3":
+          wordMultiplier *= 3;
+          break;
+      }
+    } else {
+      // Tahtada zaten var olan harf
+      const boardCell = board[cell.row][cell.col];
+      letterPoint = boardCell.points || letterValues[boardCell.letter] || 0;
     }
 
-    if (!board[row]) {
-      console.error(`Board row ${row} is undefined`);
-      return;
-    }
-
-    if (!board[row][col]) {
-      console.error(`Board cell at [${row}][${col}] is undefined`);
-      return;
-    }
-
-    // Harfi oyuncunun rafından al
-    const letterObj = rack[rackIndex];
-    const letter = typeof letterObj === "object" ? letterObj.letter : letterObj;
-
-    // Harfin puan değerini al
-    let letterPoint = letter === "JOKER" ? 0 : letterValues[letter] || 0;
-
-    // Hücre tipini kontrol et (çarpanlar)
-    const cellData = board[row][col];
-    const cellType = cellData.type;
-
-    console.log(`Cell type: ${cellType}, Letter point: ${letterPoint}`);
-
-    if (cellType === "H2") {
-      letterPoint *= 2;
-    } else if (cellType === "H3") {
-      letterPoint *= 3;
-    } else if (cellType === "K2") {
-      wordMultiplier *= 2;
-    } else if (cellType === "K3") {
-      wordMultiplier *= 3;
-    }
-
-    totalPoints += letterPoint;
+    totalPoints += letterPoint * letterMultiplier;
   });
 
   // Kelime çarpanını uygula
   totalPoints *= wordMultiplier;
 
-  console.log(`Total points: ${totalPoints}`);
+  // Çapraz kelimelerin puanlarını ekle
+  placedCells.forEach((placedCell) => {
+    const crossWordCells = getCrossWordForCell(placedCell, board, direction);
+    if (crossWordCells.length >= 2) {
+      totalPoints += calculateCrossWordPoints(
+        crossWordCells,
+        placedCell,
+        board,
+        rack
+      );
+    }
+  });
+
   return totalPoints;
+};
+
+// Yardımcı fonksiyonlar
+const getFullWordCells = (placedCells, board, direction) => {
+  const wordCells = [];
+  const sortedCells = [...placedCells].sort((a, b) => {
+    if (direction === "horizontal") return a.col - b.col;
+    if (direction === "vertical") return a.row - b.row;
+    return a.row + a.col - (b.row + b.col);
+  });
+
+  if (direction === "horizontal") {
+    const row = sortedCells[0].row;
+    let startCol = sortedCells[0].col;
+    let endCol = sortedCells[sortedCells.length - 1].col;
+
+    // Sol ve sağ genişletme
+    while (startCol > 0 && board[row][startCol - 1].letter) {
+      startCol--;
+    }
+    while (endCol < 14 && board[row][endCol + 1].letter) {
+      endCol++;
+    }
+
+    for (let col = startCol; col <= endCol; col++) {
+      const placedCell = placedCells.find(
+        (cell) => cell.row === row && cell.col === col
+      );
+      if (placedCell) {
+        wordCells.push({ ...placedCell, isPlaced: true });
+      } else {
+        wordCells.push({ row, col, isPlaced: false });
+      }
+    }
+  } else if (direction === "vertical") {
+    const col = sortedCells[0].col;
+    let startRow = sortedCells[0].row;
+    let endRow = sortedCells[sortedCells.length - 1].row;
+
+    // Yukarı ve aşağı genişletme
+    while (startRow > 0 && board[startRow - 1][col].letter) {
+      startRow--;
+    }
+    while (endRow < 14 && board[endRow + 1][col].letter) {
+      endRow++;
+    }
+
+    for (let row = startRow; row <= endRow; row++) {
+      const placedCell = placedCells.find(
+        (cell) => cell.row === row && cell.col === col
+      );
+      if (placedCell) {
+        wordCells.push({ ...placedCell, isPlaced: true });
+      } else {
+        wordCells.push({ row, col, isPlaced: false });
+      }
+    }
+  }
+
+  return wordCells;
+};
+const calculateCrossWordPoints = (crossWordCells, placedCell, board, rack) => {
+  let points = 0;
+  let wordMultiplier = 1;
+
+  crossWordCells.forEach((cell) => {
+    let letterPoint = 0;
+    let letterMultiplier = 1;
+
+    if (cell.row === placedCell.row && cell.col === placedCell.col) {
+      // Yeni yerleştirilen harf
+      const letterObj = rack[placedCell.rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+      letterPoint = letter === "JOKER" ? 0 : letterValues[letter] || 0;
+
+      // Özel hücre kontrolü
+      const cellType = board[cell.row][cell.col].type;
+
+      if (cellType === "H2") {
+        letterMultiplier = 2;
+      } else if (cellType === "H3") {
+        letterMultiplier = 3;
+      } else if (cellType === "K2") {
+        wordMultiplier *= 2;
+      } else if (cellType === "K3") {
+        wordMultiplier *= 3;
+      }
+    } else {
+      // Tahtada mevcut harf
+      const boardCell = board[cell.row][cell.col];
+      letterPoint = boardCell.points || letterValues[boardCell.letter] || 0;
+    }
+
+    points += letterPoint * letterMultiplier;
+  });
+
+  return points * wordMultiplier;
+};
+// Yardımcı fonksiyonlar
+const getPlacementDirection = (placedCells) => {
+  if (placedCells.length < 2) return "horizontal";
+
+  const [cell1, cell2] = placedCells;
+  if (cell1.row === cell2.row) return "horizontal";
+  if (cell1.col === cell2.col) return "vertical";
+  if (Math.abs(cell1.row - cell2.row) === Math.abs(cell1.col - cell2.col))
+    return "diagonal";
+  return "horizontal";
+};
+
+const getCrossWordForCell = (placedCell, board, mainDirection) => {
+  const crossCells = [];
+
+  if (mainDirection === "horizontal") {
+    // Dikey çapraz kelime
+    let startRow = placedCell.row;
+    let endRow = placedCell.row;
+
+    while (startRow > 0 && board[startRow - 1][placedCell.col].letter) {
+      startRow--;
+    }
+    while (endRow < 14 && board[endRow + 1][placedCell.col].letter) {
+      endRow++;
+    }
+
+    if (endRow > startRow) {
+      for (let row = startRow; row <= endRow; row++) {
+        crossCells.push({ row, col: placedCell.col });
+      }
+    }
+  } else if (mainDirection === "vertical") {
+    // Yatay çapraz kelime
+    let startCol = placedCell.col;
+    let endCol = placedCell.col;
+
+    while (startCol > 0 && board[placedCell.row][startCol - 1].letter) {
+      startCol--;
+    }
+    while (endCol < 14 && board[placedCell.row][endCol + 1].letter) {
+      endCol++;
+    }
+
+    if (endCol > startCol) {
+      for (let col = startCol; col <= endCol; col++) {
+        crossCells.push({ row: placedCell.row, col });
+      }
+    }
+  }
+
+  return crossCells;
 };
 
 // Hücre tipini belirleyen yardımcı fonksiyon
@@ -1384,8 +1539,10 @@ const normalizeCompleteBoard = (boardData) => {
   return normalizedBoard;
 };
 
-const getMainWordFormed = (placedCells, board, rack) => {
+const getMainWordFormed = (placedCells, board) => {
   if (placedCells.length === 0) return "";
+
+  const rack = getUserRack();
 
   // Yerleştirme yönünü belirle
   let direction = "horizontal";
@@ -1402,38 +1559,114 @@ const getMainWordFormed = (placedCells, board, rack) => {
     }
   }
 
-  // Çapraz kelime oluşturma
-  if (direction === "diagonal") {
-    // Çapraz yönü belirle
-    const dx =
-      placedCells.length > 1
-        ? Math.sign(placedCells[1].col - placedCells[0].col)
-        : 1;
-    const dy =
-      placedCells.length > 1
-        ? Math.sign(placedCells[1].row - placedCells[0].row)
-        : 1;
+  // Yerleştirilen hücreleri sırala
+  const sortedCells = [...placedCells].sort((a, b) => {
+    if (direction === "horizontal") {
+      return a.col - b.col;
+    } else if (direction === "vertical") {
+      return a.row - b.row;
+    } else {
+      // diagonal
+      return a.row + a.col - (b.row + b.col);
+    }
+  });
 
-    let currentRow = placedCells[0].row;
-    let currentCol = placedCells[0].col;
+  if (direction === "horizontal") {
+    const row = sortedCells[0].row;
+    let startCol = sortedCells[0].col;
+    let endCol = sortedCells[sortedCells.length - 1].col;
 
-    // Başlangıç noktasını bul (tahtadaki mevcut harfleri de dahil et)
-    while (
-      currentRow - dy >= 0 &&
-      currentRow - dy < 15 &&
-      currentCol - dx >= 0 &&
-      currentCol - dx < 15 &&
-      (board[currentRow - dy][currentCol - dx].letter ||
-        placedCells.some(
-          (c) => c.row === currentRow - dy && c.col === currentCol - dx
-        ))
-    ) {
-      currentRow -= dy;
-      currentCol -= dx;
+    // Sol tarafı kontrol et
+    while (startCol > 0 && board[row][startCol - 1].letter) {
+      startCol--;
+    }
+
+    // Sağ tarafı kontrol et
+    while (endCol < 14 && board[row][endCol + 1].letter) {
+      endCol++;
     }
 
     // Kelimeyi oluştur
     let word = "";
+    for (let col = startCol; col <= endCol; col++) {
+      const placedCell = placedCells.find(
+        (cell) => cell.row === row && cell.col === col
+      );
+
+      if (placedCell) {
+        // Yeni yerleştirilen harf
+        const letterObj = rack[placedCell.rackIndex];
+        const letter =
+          typeof letterObj === "object" ? letterObj.letter : letterObj;
+        word += letter === "JOKER" ? "*" : letter;
+      } else if (board[row][col].letter) {
+        // Tahtada mevcut harf
+        word += board[row][col].letter;
+      }
+    }
+
+    return word;
+  } else if (direction === "vertical") {
+    const col = sortedCells[0].col;
+    let startRow = sortedCells[0].row;
+    let endRow = sortedCells[sortedCells.length - 1].row;
+
+    // Üst tarafı kontrol et
+    while (startRow > 0 && board[startRow - 1][col].letter) {
+      startRow--;
+    }
+
+    // Alt tarafı kontrol et
+    while (endRow < 14 && board[endRow + 1][col].letter) {
+      endRow++;
+    }
+
+    // Kelimeyi oluştur
+    let word = "";
+    for (let row = startRow; row <= endRow; row++) {
+      const placedCell = placedCells.find(
+        (cell) => cell.row === row && cell.col === col
+      );
+
+      if (placedCell) {
+        // Yeni yerleştirilen harf
+        const letterObj = rack[placedCell.rackIndex];
+        const letter =
+          typeof letterObj === "object" ? letterObj.letter : letterObj;
+        word += letter === "JOKER" ? "*" : letter;
+      } else if (board[row][col].letter) {
+        // Tahtada mevcut harf
+        word += board[row][col].letter;
+      }
+    }
+
+    return word;
+  } else {
+    // diagonal
+    // Çapraz kelime mantığı
+    const dx = Math.sign(sortedCells[1]?.col - sortedCells[0].col || 1);
+    const dy = Math.sign(sortedCells[1]?.row - sortedCells[0].row || 1);
+
+    let startRow = sortedCells[0].row;
+    let startCol = sortedCells[0].col;
+
+    // Başlangıç noktasını bul
+    while (
+      startRow - dy >= 0 &&
+      startRow - dy < 15 &&
+      startCol - dx >= 0 &&
+      startCol - dx < 15 &&
+      board[startRow - dy][startCol - dx].letter
+    ) {
+      startRow -= dy;
+      startCol -= dx;
+    }
+
+    // Kelimeyi oluştur
+    let word = "";
+    let currentRow = startRow;
+    let currentCol = startCol;
+
     while (
       currentRow >= 0 &&
       currentRow < 15 &&
@@ -1441,15 +1674,17 @@ const getMainWordFormed = (placedCells, board, rack) => {
       currentCol < 15
     ) {
       const placedCell = placedCells.find(
-        (c) => c.row === currentRow && c.col === currentCol
+        (cell) => cell.row === currentRow && cell.col === currentCol
       );
 
       if (placedCell) {
+        // Yeni yerleştirilen harf
         const letterObj = rack[placedCell.rackIndex];
         const letter =
           typeof letterObj === "object" ? letterObj.letter : letterObj;
         word += letter === "JOKER" ? "*" : letter;
       } else if (board[currentRow][currentCol].letter) {
+        // Tahtada mevcut harf
         word += board[currentRow][currentCol].letter;
       } else {
         break; // Boş hücre, kelime sonu
@@ -1461,71 +1696,6 @@ const getMainWordFormed = (placedCells, board, rack) => {
 
     return word;
   }
-
-  // Yatay ve dikey için mevcut mantığı kullan
-  const sortedCells = [...placedCells].sort((a, b) => {
-    if (direction === "horizontal") {
-      return a.col - b.col;
-    } else {
-      return a.row - b.row;
-    }
-  });
-
-  let startRow = sortedCells[0].row;
-  let startCol = sortedCells[0].col;
-  let endRow = sortedCells[sortedCells.length - 1].row;
-  let endCol = sortedCells[sortedCells.length - 1].col;
-
-  // Komşu harfleri dahil et
-  if (direction === "horizontal") {
-    while (startCol > 0 && board[startRow][startCol - 1].letter) {
-      startCol--;
-    }
-    while (endCol < 14 && board[endRow][endCol + 1].letter) {
-      endCol++;
-    }
-  } else {
-    while (startRow > 0 && board[startRow - 1][startCol].letter) {
-      startRow--;
-    }
-    while (endRow < 14 && board[endRow + 1][endCol].letter) {
-      endRow++;
-    }
-  }
-
-  // Tam kelimeyi oluştur
-  let word = "";
-  if (direction === "horizontal") {
-    for (let col = startCol; col <= endCol; col++) {
-      const placedCell = placedCells.find(
-        (c) => c.row === startRow && c.col === col
-      );
-      if (placedCell) {
-        const letterObj = rack[placedCell.rackIndex];
-        const letter =
-          typeof letterObj === "object" ? letterObj.letter : letterObj;
-        word += letter === "JOKER" ? "*" : letter;
-      } else if (board[startRow][col].letter) {
-        word += board[startRow][col].letter;
-      }
-    }
-  } else {
-    for (let row = startRow; row <= endRow; row++) {
-      const placedCell = placedCells.find(
-        (c) => c.row === row && c.col === startCol
-      );
-      if (placedCell) {
-        const letterObj = rack[placedCell.rackIndex];
-        const letter =
-          typeof letterObj === "object" ? letterObj.letter : letterObj;
-        word += letter === "JOKER" ? "*" : letter;
-      } else if (board[row][startCol].letter) {
-        word += board[row][startCol].letter;
-      }
-    }
-  }
-
-  return word;
 };
 
 // getCrossWordsFormed fonksiyonunu güncelle - çapraz kelimeler için kontrol ekle
