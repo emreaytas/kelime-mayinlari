@@ -118,7 +118,7 @@ export default function BoardCell({
         // Boş hücre
         <Text style={styles.description}>{description}</Text>
       )}
-      
+
       {/* Kısıtlı hücre göstergesi */}
       {isRestricted && (
         <View style={styles.restrictedOverlay}>
@@ -191,4 +191,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255, 0, 0, 0.1)",
   },
-  restricte
+  restrictedIcon: {
+    fontSize: CELL_SIZE * 0.35,
+    color: "#FF0000",
+  },
+});
