@@ -99,15 +99,25 @@ export default function GameBoard({
 
       for (let j = 0; j < 15; j++) {
         // Güvenli erişim
-        let cellData = { letter: null, type: null, special: null };
+        let cellData = {
+          letter: null,
+          type: null,
+          special: null,
+          points: null,
+        };
 
         if (board && board[i] && board[i][j]) {
-          cellData = board[i][j];
+          cellData = {
+            letter: board[i][j].letter || null,
+            type: board[i][j].type || null,
+            special: board[i][j].special || null,
+            points: board[i][j].points || null,
+          };
         }
 
         const isSelected = isCellSelected(i, j);
 
-        let displayLetter = cellData.letter || null;
+        let displayLetter = cellData.letter;
         let isTemporary = false;
 
         if (isSelected) {
@@ -141,7 +151,6 @@ export default function GameBoard({
 
     return rows;
   };
-
   return (
     <View style={styles.container}>
       <View style={styles.board}>{renderBoard()}</View>
