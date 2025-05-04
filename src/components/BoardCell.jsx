@@ -63,10 +63,8 @@ export default function BoardCell({
   const { backgroundColor, description } = getCellStyle();
   const specialIcon = getSpecialIcon();
 
-  // ÖNEMLİ DEĞİŞİKLİK: KRİTİK DÜZELTME
-  // Tüm hücrelerin tıklanabilir olmasını sağlıyoruz,
-  // sadece kalıcı harfi olan hücreler tıklanamaz (geçici değil)
-  const isDisabled = letter !== null && !isTemporary;
+  // Hücrenin tıklanabilir olup olmadığını kontrol et
+  const isDisabled = (letter !== null && !isTemporary) || isRestricted;
 
   // Tıklama işlemini takip etmek için debug log
   const handleCellPress = () => {
@@ -75,7 +73,13 @@ export default function BoardCell({
       type,
       isSelected,
       isTemporary,
+      isRestricted,
     });
+
+    if (isRestricted) {
+      console.log("Bu hücre kısıtlı bölgede!");
+      return;
+    }
 
     if (onPress) {
       console.log("onPress fonksiyonu çağrılıyor");
@@ -93,6 +97,7 @@ export default function BoardCell({
         isSelected && styles.selectedCell,
         letter && !isTemporary && styles.filledCell,
         letter && isTemporary && styles.temporaryFilledCell,
+        isRestricted && styles.restrictedCell,
       ]}
       onPress={handleCellPress}
       disabled={isDisabled}
@@ -113,6 +118,13 @@ export default function BoardCell({
         // Boş hücre
         <Text style={styles.description}>{description}</Text>
       )}
+      
+      {/* Kısıtlı hücre göstergesi */}
+      {isRestricted && (
+        <View style={styles.restrictedOverlay}>
+          <Text style={styles.restrictedIcon}>🚫</Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -121,18 +133,18 @@ const styles = StyleSheet.create({
   cell: {
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1, // Daha belirgin kenar
+    borderWidth: 1,
     borderColor: "#666",
     padding: 0,
     margin: 0,
   },
   selectedCell: {
     borderWidth: 2,
-    borderColor: "#3f51b5", // Seçilen hücre kenarı mavi
-    backgroundColor: "#e8eaf6", // Açık mavi arka plan
+    borderColor: "#3f51b5",
+    backgroundColor: "#e8eaf6",
   },
   filledCell: {
-    backgroundColor: "#FFE4B5", // Doldurulmuş hücre rengi
+    backgroundColor: "#FFE4B5",
   },
   letterContainer: {
     justifyContent: "center",
@@ -141,11 +153,11 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   letter: {
-    fontSize: CELL_SIZE * 0.5, // Hücre boyutuna göre harf boyutu
+    fontSize: CELL_SIZE * 0.5,
     fontWeight: "bold",
   },
   points: {
-    fontSize: CELL_SIZE * 0.25, // Hücre boyutuna göre puan boyutu
+    fontSize: CELL_SIZE * 0.25,
     position: "absolute",
     bottom: 1,
     right: 1,
@@ -158,11 +170,25 @@ const styles = StyleSheet.create({
     fontSize: CELL_SIZE * 0.5,
   },
   temporaryFilledCell: {
-    backgroundColor: "#FFFACD", // Daha açık sarı renk (geçici yerleştirme için)
+    backgroundColor: "#FFFACD",
     borderWidth: 2,
-    borderColor: "#DAA520", // Altın rengi kenar
+    borderColor: "#DAA520",
   },
   temporaryLetter: {
-    color: "#B8860B", // Biraz daha koyu renk (geçici harf için)
+    color: "#B8860B",
   },
-});
+  restrictedCell: {
+    backgroundColor: "#FFE5E5", // Açık kırmızı arka plan
+    opacity: 0.7,
+  },
+  restrictedOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 0, 0, 0.1)",
+  },
+  restricte

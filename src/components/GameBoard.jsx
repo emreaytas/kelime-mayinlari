@@ -69,8 +69,25 @@ export default function GameBoard({
     return typeof letterObj === "object" ? letterObj.letter : letterObj;
   };
 
-  // Hücreye tıklama işleyicisi
+  // Bölge kısıtlamasını kontrol et
+  const isRestrictedCell = (row, col) => {
+    if (!restrictedSide || !currentPlayer) return false;
 
+    // Tahtanın orta çizgisi (sütun 7)
+    const midPoint = 7;
+
+    if (restrictedSide === "left") {
+      // Sol taraf kısıtlı, sadece sağ tarafta oynayabilir
+      return col < midPoint;
+    } else if (restrictedSide === "right") {
+      // Sağ taraf kısıtlı, sadece sol tarafta oynayabilir
+      return col > midPoint;
+    }
+
+    return false;
+  };
+
+  // Hücreye tıklama işleyicisi
   const handleCellPress = (row, col) => {
     console.log(`GameBoard: Hücre tıklandı (${row}, ${col})`);
 
@@ -85,13 +102,16 @@ export default function GameBoard({
       return;
     }
 
+    // Bölge kısıtlaması kontrolü
+    if (isRestrictedCell(rowNum, colNum)) {
+      console.log("Bu hücre kısıtlı bölgede!");
+      return;
+    }
+
     if (onCellPress) {
       onCellPress(rowNum, colNum);
     }
   };
-
-  // Tahta satırları ve hücrelerini oluştur
-  // src/components/GameBoard.jsx içinde
 
   const renderBoard = () => {
     const rows = [];
@@ -118,6 +138,7 @@ export default function GameBoard({
         }
 
         const isSelected = isCellSelected(i, j);
+        const isRestricted = isRestrictedCell(i, j);
 
         let displayLetter = cellData.letter;
         let isTemporary = false;
@@ -139,6 +160,7 @@ export default function GameBoard({
             special={showSpecials ? cellData.special : null}
             isSelected={isSelected}
             isTemporary={isTemporary}
+            isRestricted={isRestricted}
             onPress={() => handleCellPress(i, j)}
           />
         );
@@ -153,6 +175,7 @@ export default function GameBoard({
 
     return rows;
   };
+
   return (
     <View style={styles.container}>
       <View style={styles.board}>{renderBoard()}</View>

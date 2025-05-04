@@ -2800,7 +2800,9 @@ export default function GameInterface({ gameId }) {
           selectedCells={selectedBoardCells}
           onCellPress={handleCellPress}
           showSpecials={false}
-          getUserRack={() => getUserRack()} // Fonksiyon referansını doğru şekilde geçir
+          getUserRack={() => getUserRack()}
+          restrictedSide={game?.restrictedArea?.side}
+          currentPlayer={auth.currentUser?.uid}
         />
       </View>
       {/* Kullanıcı Ödülleri */}
