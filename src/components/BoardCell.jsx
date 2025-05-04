@@ -20,6 +20,7 @@ export default function BoardCell({
   special,
   isSelected,
   isTemporary,
+  isRestricted,
   onPress,
 }) {
   // Hücre tipi, renk ve açıklaması

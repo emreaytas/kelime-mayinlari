@@ -14,6 +14,8 @@ export default function GameBoard({
   onCellPress,
   showSpecials = false,
   getUserRack,
+  restrictedSide = null,
+  currentPlayer = null,
 }) {
   // Board'un normalize edildiğinden emin ol
   if (!board || !Array.isArray(board) || board.length !== 15) {

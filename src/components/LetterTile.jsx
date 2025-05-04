@@ -1,8 +1,13 @@
 // src/components/LetterTile.jsx
 import React from "react";
 import { TouchableOpacity, Text, StyleSheet } from "react-native";
-
-export default function LetterTile({ letter, points, isSelected, onPress }) {
+export default function LetterTile({
+  letter,
+  points,
+  isSelected,
+  isFrozen,
+  onPress,
+}) {
   // Harf tanımsızsa gösterme
   if (!letter) {
     return null;
@@ -10,11 +15,19 @@ export default function LetterTile({ letter, points, isSelected, onPress }) {
 
   return (
     <TouchableOpacity
-      style={[styles.tile, isSelected && styles.selectedTile]}
+      style={[
+        styles.tile,
+        isSelected && styles.selectedTile,
+        isFrozen && styles.frozenTile,
+      ]}
       onPress={onPress}
+      disabled={isFrozen}
     >
-      <Text style={styles.letter}>{letter === "JOKER" ? "*" : letter}</Text>
+      <Text style={[styles.letter, isFrozen && styles.frozenLetter]}>
+        {letter === "JOKER" ? "*" : letter}
+      </Text>
       {points !== null && <Text style={styles.points}>{points}</Text>}
+      {isFrozen && <Text style={styles.frozenIcon}>❄️</Text>}
     </TouchableOpacity>
   );
 }

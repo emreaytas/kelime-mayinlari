@@ -2590,9 +2590,9 @@ export default function GameInterface({ gameId }) {
           BolgeYasagi:
             "Bölge Yasağı etkinleştirildi. Rakibiniz sınırlı bir alanda oynayabilecek!",
           HarfYasagi:
-            "Harf Yasağı etkinleştirildi. Rakibinizin bazı harfleri donduruldu!",
+            "Harf Yasağı etkinleştirildi. Rakibinizin 2 harfi donduruldu!",
           EkstraHamleJokeri:
-            "Ekstra Hamle Jokeri etkinleştirildi. Bir sonraki turda ekstra hamle yapabileceksiniz!",
+            "Ekstra Hamle Jokeri etkinleştirildi. Bir hamle daha yapabilirsiniz!",
         };
 
         setSpecialPopup({
@@ -2600,6 +2600,12 @@ export default function GameInterface({ gameId }) {
           message:
             rewardMessages[rewardType] || `${rewardType} etkinleştirildi!`,
         });
+
+        // Ekstra hamle jokeri kullanıldıysa, sıranın tekrar bu oyuncuda olması için bir flag set et
+        if (rewardType === "EkstraHamleJokeri") {
+          // Bu state'i GameInterface'in üst kısmında tanımlamanız gerekecek
+          setHasExtraMove(true);
+        }
 
         setActiveReward(null);
       }
@@ -2612,7 +2618,6 @@ export default function GameInterface({ gameId }) {
       setConfirmingAction(false);
     }
   };
-
   // Popup kapat
   const closePopup = () => {
     setSpecialPopup(null);
@@ -2798,7 +2803,6 @@ export default function GameInterface({ gameId }) {
           getUserRack={() => getUserRack()} // Fonksiyon referansını doğru şekilde geçir
         />
       </View>
-
       {/* Kullanıcı Ödülleri */}
       {userRewards.length > 0 && (
         <View style={styles.rewardsContainer}>
@@ -2817,7 +2821,9 @@ export default function GameInterface({ gameId }) {
                   }
                   disabled={!isUserTurn() || confirmingAction}
                 >
-                  <Text style={styles.rewardText}>{reward}</Text>
+                  <Text style={styles.rewardText}>
+                    {getRewardDisplayName(reward)}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -2832,6 +2838,32 @@ export default function GameInterface({ gameId }) {
               <Text style={styles.useRewardText}>Ödülü Kullan</Text>
             </TouchableOpacity>
           )}
+        </View>
+      )}
+
+      {/* Aktif Kısıtlamalar */}
+      {(game?.restrictedArea || game?.frozenLetters) && (
+        <View style={styles.restrictionsContainer}>
+          {game.restrictedArea &&
+            game.restrictedArea.player === auth.currentUser?.uid && (
+              <View style={styles.restrictionItem}>
+                <Text style={styles.restrictionText}>
+                  Bölge Kısıtlaması: Sadece tahtanın{" "}
+                  {game.restrictedArea.side === "left" ? "sağ" : "sol"} tarafına
+                  oynayabilirsiniz
+                </Text>
+              </View>
+            )}
+
+          {game.frozenLetters &&
+            game.frozenLetters.player === auth.currentUser?.uid && (
+              <View style={styles.restrictionItem}>
+                <Text style={styles.restrictionText}>
+                  Dondurulmuş harfleriniz var! {game.frozenLetters.turns} tur
+                  kaldı
+                </Text>
+              </View>
+            )}
         </View>
       )}
 

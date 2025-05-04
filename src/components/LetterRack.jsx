@@ -6,6 +6,7 @@ import LetterTile from "./LetterTile";
 export default function LetterRack({
   letters,
   selectedIndices = [],
+  frozenIndices = [],
   onTilePress,
 }) {
   // Veri kontrolü
@@ -29,13 +30,16 @@ export default function LetterRack({
               ? letterObj.points
               : null;
 
+          const isFrozen = frozenIndices.includes(index);
+
           return (
             <LetterTile
               key={`tile-${index}`}
               letter={letter}
               points={points}
               isSelected={selectedIndices.includes(index)}
-              onPress={() => onTilePress && onTilePress(index)}
+              isFrozen={isFrozen}
+              onPress={() => !isFrozen && onTilePress && onTilePress(index)}
             />
           );
         })}

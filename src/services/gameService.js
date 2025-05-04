@@ -1001,6 +1001,7 @@ export const endGame = async (gameId, reason) => {
     throw error;
   }
 };
+
 // Ödül kullan
 export const useReward = async (gameId, rewardType) => {
   try {
