@@ -412,7 +412,7 @@ export const placeWord = async (gameId, placedCells) => {
     }
 
     const isPlayer1 = game.player1.id === userId;
-    const userRack = isPlayer1 ? game.player1Rack : game.player2Rack; // Bu zaten var!
+    const userRack = isPlayer1 ? game.player1Rack : game.player2Rack;
 
     // Tahta normalizasyonu
     let normalizedBoard = [];
@@ -439,15 +439,24 @@ export const placeWord = async (gameId, placedCells) => {
       }
     }
 
-    // Ana kelimeyi oluştur - getUserRack() yerine userRack kullan
+    // Ana kelimeyi oluştur - userRack kullan
     const mainWord = getMainWordFormed(placedCells, normalizedBoard, userRack);
-    const mainWordToValidate = mainWord.replace(/\*/g, "A").toLowerCase();
+
+    // Kelime doğrulama için normalleştir - Türkçe karakterleri handle et
+    const mainWordToValidate = mainWord
+      .replace(/\*/g, "A") // Joker karakterini A ile değiştir
+      .toLowerCase()
+      .replace(/i̇/g, "i") // Türkçe i karakterini düzelt
+      .replace(/ı/g, "i"); // Türkçe ı karakterini düzelt
+
+    console.log("Ana kelime:", mainWord);
+    console.log("Doğrulanacak kelime:", mainWordToValidate);
 
     if (mainWord.length >= 2 && !wordList.includes(mainWordToValidate)) {
       throw new Error("Geçersiz kelime: " + mainWord);
     }
 
-    // Çapraz kelimeleri kontrol et - userRack kullan
+    // Çapraz kelimeleri kontrol et
     const crossWords = getCrossWordsFormed(
       placedCells,
       normalizedBoard,
@@ -455,7 +464,12 @@ export const placeWord = async (gameId, placedCells) => {
     );
 
     for (const crossWord of crossWords) {
-      const crossWordToValidate = crossWord.replace(/\*/g, "A").toLowerCase();
+      const crossWordToValidate = crossWord
+        .replace(/\*/g, "A")
+        .toLowerCase()
+        .replace(/i̇/g, "i")
+        .replace(/ı/g, "i");
+
       if (crossWord.length >= 2 && !wordList.includes(crossWordToValidate)) {
         throw new Error("Geçersiz çapraz kelime: " + crossWord);
       }

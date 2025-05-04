@@ -292,7 +292,11 @@ export const validateWord = (word) => {
   if (!word || typeof word !== "string" || word.length < 2) return false;
 
   // Joker karakterini handle et ve Türkçe karakterleri normalize et
-  const wordToCheck = word.toLowerCase().replace(/\*/g, "").replace(/i̇/g, "i"); // Türkçe i harfi problemini çöz
+  const wordToCheck = word
+    .toLowerCase()
+    .replace(/\*/g, "a") // Joker karakterini a ile değiştir
+    .replace(/i̇/g, "i") // Türkçe i harfi problemini çöz
+    .replace(/ı/g, "i"); // Türkçe ı karakterini i olarak değiştir
 
   // Debug için
   console.log("GameBoardUtils: Doğrulanacak kelime:", wordToCheck);
