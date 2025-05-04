@@ -82,7 +82,7 @@ export default function RegisterScreen() {
     try {
       setLoading(true);
 
-      // Check if username is already taken
+      // kullanıcı adı daha önce var mıydı hacı ona bakacağız.
       const usernameDoc = await getDoc(doc(firestore, "usernames", username));
       if (usernameDoc.exists()) {
         setLoading(false);
@@ -90,7 +90,6 @@ export default function RegisterScreen() {
         return;
       }
 
-      // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -98,12 +97,10 @@ export default function RegisterScreen() {
       );
       const user = userCredential.user;
 
-      // Update user profile
       await updateProfile(user, {
         displayName: username,
       });
 
-      // Store user data in Firestore
       await setDoc(doc(firestore, "users", user.uid), {
         username,
         email,
@@ -113,13 +110,11 @@ export default function RegisterScreen() {
         successRate: 0,
       });
 
-      // Store username mapping for login
       await setDoc(doc(firestore, "usernames", username), {
         uid: user.uid,
         email,
       });
 
-      // Also store user in Realtime Database for game interactions
       await set(ref(database, `users/${user.uid}`), {
         username,
         email,
@@ -131,7 +126,6 @@ export default function RegisterScreen() {
 
       setLoading(false);
 
-      // Show success message and redirect
       Alert.alert("Başarılı", "Hesabınız oluşturuldu. Giriş yapılıyor...", [
         {
           text: "Tamam",
