@@ -447,7 +447,7 @@ export const placeWord = async (gameId, placedCells) => {
       throw new Error("Geçersiz kelime: " + mainWord);
     }
 
-    // Çapraz kelimeleri kontrol et - getUserRack() yerine userRack kullan
+    // Çapraz kelimeleri kontrol et - userRack kullan
     const crossWords = getCrossWordsFormed(
       placedCells,
       normalizedBoard,
@@ -1539,10 +1539,8 @@ const normalizeCompleteBoard = (boardData) => {
   return normalizedBoard;
 };
 
-const getMainWordFormed = (placedCells, board) => {
+const getMainWordFormed = (placedCells, board, rack) => {
   if (placedCells.length === 0) return "";
-
-  const rack = getUserRack();
 
   // Yerleştirme yönünü belirle
   let direction = "horizontal";
@@ -1697,7 +1695,6 @@ const getMainWordFormed = (placedCells, board) => {
     return word;
   }
 };
-
 // getCrossWordsFormed fonksiyonunu güncelle - çapraz kelimeler için kontrol ekle
 const getCrossWordsFormed = (placedCells, board, rack) => {
   const crossWords = [];
