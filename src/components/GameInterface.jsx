@@ -1401,11 +1401,19 @@ export default function GameInterface({ gameId }) {
 
       // Ana kelimeyi al (komşu harflerle birlikte)
       const mainWord = getMainWordFormed(cells, game.board);
+      console.log("Oluşturulan kelime:", mainWord);
+
       setCurrentWord(mainWord);
 
       // Geçerliliği kontrol et
       if (mainWord.length >= 2) {
-        const isValid = validateWord(mainWord.toLowerCase());
+        // Joker'leri 'A' ile değiştir
+        const wordToValidate = mainWord.replace(/\*/g, "A").toLowerCase();
+        console.log("Doğrulanacak kelime:", wordToValidate);
+
+        const isValid = validateWord(wordToValidate);
+        console.log("Kelime geçerli mi?", isValid);
+
         setWordValid(isValid);
 
         if (isValid) {

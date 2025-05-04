@@ -290,7 +290,15 @@ export const distributeLetters = (letterPool) => {
 // Kelime doğrulama
 export const validateWord = (word) => {
   if (!word || typeof word !== "string" || word.length < 2) return false;
-  return wordList.includes(word.toLowerCase());
+
+  // Joker karakterini handle et
+  const wordToCheck = word.toLowerCase().replace(/\*/g, "");
+
+  // Debug için
+  console.log("Doğrulanacak kelime:", wordToCheck);
+  console.log("Kelime listesinde var mı?", wordList.includes(wordToCheck));
+
+  return wordList.includes(wordToCheck);
 };
 
 // Harf değerlerini al

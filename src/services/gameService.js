@@ -1558,101 +1558,120 @@ const getMainWordFormed = (placedCells, board, rack) => {
     }
   }
 
-  // Yerleştirilen hücreleri sırala
-  const sortedCells = [...placedCells].sort((a, b) => {
-    if (direction === "horizontal") {
-      return a.col - b.col;
-    } else if (direction === "vertical") {
-      return a.row - b.row;
-    } else {
-      // diagonal
-      return a.row + a.col - (b.row + b.col);
+  // Eğer tek harf yerleştiriliyorsa, etrafındaki harflerle birlikte
+  // yönü belirlemek için kontrol yap
+  if (placedCells.length === 1) {
+    const cell = placedCells[0];
+
+    // Yatay komşuları kontrol et
+    const hasHorizontalNeighbor =
+      (cell.col > 0 && board[cell.row][cell.col - 1]?.letter) ||
+      (cell.col < 14 && board[cell.row][cell.col + 1]?.letter);
+
+    // Dikey komşuları kontrol et
+    const hasVerticalNeighbor =
+      (cell.row > 0 && board[cell.row - 1][cell.col]?.letter) ||
+      (cell.row < 14 && board[cell.row + 1][cell.col]?.letter);
+
+    if (hasHorizontalNeighbor && !hasVerticalNeighbor) {
+      direction = "horizontal";
+    } else if (hasVerticalNeighbor && !hasHorizontalNeighbor) {
+      direction = "vertical";
+    } else if (hasHorizontalNeighbor && hasVerticalNeighbor) {
+      // Her iki yönde de komşu var, önce yatay kelimeyi kontrol et
+      direction = "horizontal";
     }
-  });
+  }
 
   if (direction === "horizontal") {
-    const row = sortedCells[0].row;
-    let startCol = sortedCells[0].col;
-    let endCol = sortedCells[sortedCells.length - 1].col;
+    const row = placedCells[0].row;
+    let startCol = placedCells[0].col;
+    let endCol = placedCells[0].col;
 
-    // Sol tarafı kontrol et - güvenli erişim
-    while (startCol > 0) {
-      const leftCell = board[row] && board[row][startCol - 1];
-      if (!leftCell || !leftCell.letter) break;
-      startCol--;
+    // Tüm yerleştirilen hücreleri kapsayacak şekilde başlangıç ve bitiş noktalarını bul
+    placedCells.forEach((cell) => {
+      if (cell.col < startCol) startCol = cell.col;
+      if (cell.col > endCol) endCol = cell.col;
+    });
+
+    // Sol tarafı kontrol et - sadece bitişik harfleri al
+    let tempStartCol = startCol;
+    while (tempStartCol > 0 && board[row][tempStartCol - 1]?.letter) {
+      tempStartCol--;
     }
+    startCol = tempStartCol;
 
-    // Sağ tarafı kontrol et - güvenli erişim
-    while (endCol < 14) {
-      const rightCell = board[row] && board[row][endCol + 1];
-      if (!rightCell || !rightCell.letter) break;
-      endCol++;
+    // Sağ tarafı kontrol et - sadece bitişik harfleri al
+    let tempEndCol = endCol;
+    while (tempEndCol < 14 && board[row][tempEndCol + 1]?.letter) {
+      tempEndCol++;
     }
+    endCol = tempEndCol;
 
-    // Kelimeyi oluştur
+    // Kelimeyi oluştur - sadece bitişik hücreleri kullan
     let word = "";
     for (let col = startCol; col <= endCol; col++) {
       const placedCell = placedCells.find(
-        (cell) => cell.row === row && cell.col === col
+        (c) => c.row === row && c.col === col
       );
 
       if (placedCell) {
-        // Yeni yerleştirilen harf
         const letterObj = rack[placedCell.rackIndex];
         const letter =
           typeof letterObj === "object" ? letterObj.letter : letterObj;
         word += letter === "JOKER" ? "*" : letter;
+      } else if (board[row][col]?.letter) {
+        word += board[row][col].letter;
       } else {
-        // Tahtada mevcut harf - güvenli erişim
-        const boardCell = board[row] && board[row][col];
-        if (boardCell && boardCell.letter) {
-          word += boardCell.letter;
-        }
+        // Boş hücre bulundu, bu noktada kelime bitmeli
+        break;
       }
     }
-
     return word;
   } else if (direction === "vertical") {
-    const col = sortedCells[0].col;
-    let startRow = sortedCells[0].row;
-    let endRow = sortedCells[sortedCells.length - 1].row;
+    const col = placedCells[0].col;
+    let startRow = placedCells[0].row;
+    let endRow = placedCells[0].row;
 
-    // Üst tarafı kontrol et - güvenli erişim
-    while (startRow > 0) {
-      const upperCell = board[startRow - 1] && board[startRow - 1][col];
-      if (!upperCell || !upperCell.letter) break;
-      startRow--;
+    // Tüm yerleştirilen hücreleri kapsayacak şekilde başlangıç ve bitiş noktalarını bul
+    placedCells.forEach((cell) => {
+      if (cell.row < startRow) startRow = cell.row;
+      if (cell.row > endRow) endRow = cell.row;
+    });
+
+    // Üst tarafı kontrol et - sadece bitişik harfleri al
+    let tempStartRow = startRow;
+    while (tempStartRow > 0 && board[tempStartRow - 1][col]?.letter) {
+      tempStartRow--;
     }
+    startRow = tempStartRow;
 
-    // Alt tarafı kontrol et - güvenli erişim
-    while (endRow < 14) {
-      const lowerCell = board[endRow + 1] && board[endRow + 1][col];
-      if (!lowerCell || !lowerCell.letter) break;
-      endRow++;
+    // Alt tarafı kontrol et - sadece bitişik harfleri al
+    let tempEndRow = endRow;
+    while (tempEndRow < 14 && board[tempEndRow + 1][col]?.letter) {
+      tempEndRow++;
     }
+    endRow = tempEndRow;
 
-    // Kelimeyi oluştur
+    // Kelimeyi oluştur - sadece bitişik hücreleri kullan
     let word = "";
     for (let row = startRow; row <= endRow; row++) {
       const placedCell = placedCells.find(
-        (cell) => cell.row === row && cell.col === col
+        (c) => c.row === row && c.col === col
       );
 
       if (placedCell) {
-        // Yeni yerleştirilen harf
         const letterObj = rack[placedCell.rackIndex];
         const letter =
           typeof letterObj === "object" ? letterObj.letter : letterObj;
         word += letter === "JOKER" ? "*" : letter;
+      } else if (board[row][col]?.letter) {
+        word += board[row][col].letter;
       } else {
-        // Tahtada mevcut harf - güvenli erişim
-        const boardCell = board[row] && board[row][col];
-        if (boardCell && boardCell.letter) {
-          word += boardCell.letter;
-        }
+        // Boş hücre bulundu, bu noktada kelime bitmeli
+        break;
       }
     }
-
     return word;
   } else {
     // diagonal
