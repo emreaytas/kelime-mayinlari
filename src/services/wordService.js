@@ -4,7 +4,13 @@ import wordList from "../assets/wordList";
 // Kelime doğrulama
 export const validateWord = (word) => {
   // Kelime listesinde arama yap (lowercase ile karşılaştır)
-  return wordList.includes(word.toLowerCase());
+  const normalizedWord = word.toLowerCase().replace(/i̇/g, "i"); // Türkçe i harfi problemini çöz
+  console.log("validateWord: Normalleştirilmiş kelime:", normalizedWord);
+
+  const isValid = wordList.includes(normalizedWord);
+  console.log("validateWord: Kelime listesinde var mı?", isValid);
+
+  return isValid;
 };
 
 // Kelimenin puanını hesapla

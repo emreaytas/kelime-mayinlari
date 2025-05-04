@@ -1355,30 +1355,29 @@ export default function GameInterface({ gameId }) {
       row,
       col,
       rackIndex: rackIndex,
-      letter: letter, // Bu satırı ekleyin
+      letter: letter, // Bu satır zaten var
     };
     const newSelectedCells = [...selectedBoardCells, newCell];
     setSelectedBoardCells(newSelectedCells);
 
     // Seçilen harfi raf seçiminden kaldır
     setSelectedRackIndices([]);
+
     // Yerleştirme yönünü belirle
     if (newSelectedCells.length === 2) {
       determineDirection(newSelectedCells);
     }
 
-    try {
-      updateCurrentWord(newSelectedCells);
-    } catch (error) {
-      console.error("Error updating current word:", error);
-    }
+    // Kelimeyi güncelle
+    updateCurrentWord(newSelectedCells);
 
     console.log("Harf yerleştirildi:", {
       row,
       col,
       rackIndex: newCell.rackIndex,
+      letter: letter,
     });
-  }; // checkValidPlacement fonksiyonunu da güncelleyelim
+  };
 
   // Kelimeyi göstermek için yeni fonksiyon
   const updateCurrentWord = (cells) => {
@@ -1390,25 +1389,52 @@ export default function GameInterface({ gameId }) {
     }
 
     try {
-      // Tahta verisini kontrol et
-      if (!game || !game.board) {
-        console.error("Game or board data is missing");
-        setCurrentWord("");
-        setWordValid(false);
-        setEarnedPoints(0);
-        return;
+      // Harfleri doğrudan kullanarak kelimeyi oluştur
+      let word = "";
+      const rack = getUserRack();
+
+      // Yönü belirle
+      let direction = "horizontal";
+      if (cells.length > 1) {
+        const [cell1, cell2] = cells;
+        if (cell1.row === cell2.row) {
+          direction = "horizontal";
+        } else if (cell1.col === cell2.col) {
+          direction = "vertical";
+        } else if (
+          Math.abs(cell1.row - cell2.row) === Math.abs(cell1.col - cell2.col)
+        ) {
+          direction = "diagonal";
+        }
       }
 
-      // Ana kelimeyi al (komşu harflerle birlikte)
-      const mainWord = getMainWordFormed(cells, game.board);
-      console.log("Oluşturulan kelime:", mainWord);
+      // Hücreleri sırala
+      const sortedCells = [...cells].sort((a, b) => {
+        if (direction === "horizontal") {
+          return a.col - b.col;
+        } else if (direction === "vertical") {
+          return a.row - b.row;
+        } else {
+          // Diagonal için
+          return a.row + a.col - (b.row + b.col);
+        }
+      });
 
-      setCurrentWord(mainWord);
+      // Kelimeyi oluştur
+      sortedCells.forEach((cell) => {
+        const letterObj = rack[cell.rackIndex];
+        const letter =
+          typeof letterObj === "object" ? letterObj.letter : letterObj;
+        word += letter === "JOKER" ? "*" : letter;
+      });
 
-      // Geçerliliği kontrol et
-      if (mainWord.length >= 2) {
-        // Joker'leri 'A' ile değiştir
-        const wordToValidate = mainWord.replace(/\*/g, "A").toLowerCase();
+      console.log("Oluşturulan kelime:", word);
+      setCurrentWord(word);
+
+      // Kelime geçerliliğini kontrol et
+      if (word.length >= 2) {
+        // Joker'leri 'A' ile değiştirerek doğrula
+        const wordToValidate = word.replace(/\*/g, "A").toLowerCase();
         console.log("Doğrulanacak kelime:", wordToValidate);
 
         const isValid = validateWord(wordToValidate);
@@ -1417,8 +1443,9 @@ export default function GameInterface({ gameId }) {
         setWordValid(isValid);
 
         if (isValid) {
-          const points = calculateWordPoints(cells, game.board, getUserRack());
+          const points = calculateSimplePoints(cells, rack);
           setEarnedPoints(points);
+          console.log("Hesaplanan puan:", points);
         } else {
           setEarnedPoints(0);
         }
@@ -2579,6 +2606,20 @@ export default function GameInterface({ gameId }) {
         },
       ]
     );
+  };
+
+  const calculateSimplePoints = (cells, rack) => {
+    let totalPoints = 0;
+
+    cells.forEach((cell) => {
+      const letterObj = rack[cell.rackIndex];
+      const letter =
+        typeof letterObj === "object" ? letterObj.letter : letterObj;
+      const points = letter === "JOKER" ? 0 : letterValues[letter] || 0;
+      totalPoints += points;
+    });
+
+    return totalPoints;
   };
 
   // Ödül kullan

@@ -291,12 +291,15 @@ export const distributeLetters = (letterPool) => {
 export const validateWord = (word) => {
   if (!word || typeof word !== "string" || word.length < 2) return false;
 
-  // Joker karakterini handle et
-  const wordToCheck = word.toLowerCase().replace(/\*/g, "");
+  // Joker karakterini handle et ve Türkçe karakterleri normalize et
+  const wordToCheck = word.toLowerCase().replace(/\*/g, "").replace(/i̇/g, "i"); // Türkçe i harfi problemini çöz
 
   // Debug için
-  console.log("Doğrulanacak kelime:", wordToCheck);
-  console.log("Kelime listesinde var mı?", wordList.includes(wordToCheck));
+  console.log("GameBoardUtils: Doğrulanacak kelime:", wordToCheck);
+  console.log(
+    "GameBoardUtils: Kelime listesinde var mı?",
+    wordList.includes(wordToCheck)
+  );
 
   return wordList.includes(wordToCheck);
 };
